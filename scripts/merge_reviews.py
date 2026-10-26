@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Merge the four human-reviewed data/review/reviewer_N.json files into
-data/eval.jsonl (JSON Lines, one compact object per line, sorted by id).
+data/eval.json (a pretty-printed JSON array, sorted by id — same format as
+eval_draft.json and the reviewer_N.json files, for readability).
 
 data/eval_draft.json (the raw LLM draft) is never read for anything other
 than the before/after comparison in data/REVIEW_STATS.md — it is not
@@ -25,10 +26,31 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 REVIEW_DIR = DATA / "review"
 DRAFT_PATH = DATA / "eval_draft.json"
-OUTPUT_PATH = DATA / "eval.jsonl"
+OUTPUT_PATH = DATA / "eval.json"
 STATS_PATH = DATA / "REVIEW_STATS.md"
 
 REVIEWERS = ["reviewer_1", "reviewer_2", "reviewer_3", "reviewer_4"]
+
+# Same field order used throughout data/ (id/type/category first, then the
+# Q&A, then provenance, then review bookkeeping) so every file in the
+# pipeline reads the same way.
+FIELD_ORDER = [
+    "id",
+    "type",
+    "category",
+    "answerable",
+    "question",
+    "answer",
+    "source_file",
+    "source_section",
+    "source_passage",
+    "extra_sources",
+    "absence_check",
+    "origin",
+    "verified",
+    "reviewer",
+    "review_notes",
+]
 
 REQUIRED_FIELDS = [
     "id",
@@ -112,10 +134,15 @@ def main():
         raise SystemExit(1)
 
     final_rows.sort(key=lambda r: r["id"])
+    final_rows = [
+        {k: row[k] for k in FIELD_ORDER if k in row}
+        | {k: v for k, v in row.items() if k not in FIELD_ORDER}
+        for row in final_rows
+    ]
 
     with OUTPUT_PATH.open("w", encoding="utf-8") as out:
-        for row in final_rows:
-            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+        json.dump(final_rows, out, indent=2, ensure_ascii=False)
+        out.write("\n")
 
     print(f"Wrote {len(final_rows)} rows to {OUTPUT_PATH}, sorted by id.")
 
@@ -166,7 +193,7 @@ def main():
     lines.append("# Review stats: draft vs. final\n")
     lines.append(
         f"`data/eval_draft.json` (120 LLM-drafted questions, pre-review) "
-        f"vs. `data/eval.jsonl` ({len(final_rows)} human-reviewed questions), "
+        f"vs. `data/eval.json` ({len(final_rows)} human-reviewed questions), "
         f"after merging `data/review/reviewer_1..4.json`.\n"
     )
 

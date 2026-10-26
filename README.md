@@ -25,6 +25,14 @@ valid. `corpus/` is gitignored — it is not committed to this repo.
 
 ## Status
 
-The evaluation dataset (`data/eval_draft.json`) is an LLM-generated **draft
-awaiting human verification** by the team (see `data/REVIEW_GUIDE.md`).
-Nothing in it should be treated as ground truth until `verified: true`.
+The evaluation dataset has been human-reviewed. **`data/eval.json`** is the
+final set — 119 questions, every row `verified: true` — and is what the
+retrieval/generation eval harness should use going forward.
+
+`data/eval_draft.json` (the original 120 LLM-drafted questions, pre-review)
+is kept as-is for audit purposes; it is not used by anything downstream.
+`data/REVIEW_STATS.md` has the draft-vs-final diff (what was kept, edited,
+or deleted, and why). `data/SCHEMA.md` documents the shared format.
+
+Quality-check freezing and the dev/test split have not happened yet — that's
+the next step, not done here.

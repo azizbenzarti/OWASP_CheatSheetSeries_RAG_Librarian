@@ -1,6 +1,6 @@
 # Review stats: draft vs. final
 
-`data/eval_draft.json` (120 LLM-drafted questions, pre-review) vs. `data/eval.jsonl` (119 human-reviewed questions), after merging `data/review/reviewer_1..4.json`.
+`data/eval_draft.json` (120 LLM-drafted questions, pre-review) vs. `data/eval.json` (119 human-reviewed questions), after merging `data/review/reviewer_1..4.json`.
 
 ## Headline numbers
 

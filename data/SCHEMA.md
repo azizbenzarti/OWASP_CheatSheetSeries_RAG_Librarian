@@ -1,9 +1,13 @@
 # Eval dataset schema
 
-`data/eval_draft.json` — a single pretty-printed JSON array (`indent=2`), one
-object per question, in the field order below. This format (not one-object-
-per-line JSONL) is deliberate: a human reviewer needs to actually read and
-hand-edit every row, and a 2000-character single line is not reviewable.
+Applies to `data/eval_draft.json` (the raw, unreviewed LLM draft),
+`data/review/reviewer_N.json` (one reviewer's slice, mid-review), and
+`data/eval.json` (the merged, human-reviewed final set — see
+`scripts/merge_reviews.py` and `data/REVIEW_STATS.md`). All three are a
+single pretty-printed JSON array (`indent=2`), one object per question, in
+the field order below. This format (not one-object-per-line JSONL) is
+deliberate: a human reviewer needs to actually read and hand-edit every row,
+and a 2000-character single line is not reviewable.
 `scripts/check_passages.py` accepts this array format (and, for backward
 compatibility, legacy JSONL).
 
@@ -27,6 +31,7 @@ came from, then bookkeeping):
 | `origin` | string | `"llm_draft"` for everything produced in this pass. |
 | `verified` | bool | `false` until a human reviewer confirms it in Part C/D (human review). Always `false` at draft time. |
 | `reviewer` | string | One of `reviewer_1`..`reviewer_4`. Assigned after generation so each reviewer owns whole sheets (see `data/REVIEW_GUIDE.md`). |
+| `review_notes` | string | **Only present on rows a reviewer edited.** Free text: what changed and why (see `data/REVIEW_GUIDE.md`). Absent (not `null`) on rows kept as-is. |
 
 ## Type definitions
 
