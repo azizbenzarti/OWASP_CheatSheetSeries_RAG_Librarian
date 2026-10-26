@@ -1,0 +1,554 @@
+[
+  {
+    "id": "q007",
+    "type": "factual",
+    "category": "attacks",
+    "answerable": true,
+    "question": "I set my session cookie to SameSite=Lax -- am I covered against CSRF even if one of my endpoints still mutates data on a GET request?",
+    "answer": "No. SameSite=Lax still allows the cookie to be sent on cross-site top-level navigations using safe methods (GET, HEAD, OPTIONS, TRACE), so if any state-changing action in your app is reachable via GET, SameSite=Lax will not stop CSRF against it -- this is called out as the single most common way SameSite-based defenses fail in practice.",
+    "source_file": "Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.md",
+    "source_section": "Defense In Depth Techniques > SameSite (Cookie Attribute) > Limitations of SameSite",
+    "source_passage": "**`Lax` only blocks unsafe methods.** The default `Lax` behavior still allows the cookie on top-level navigations that use [safe methods](https://tools.ietf.org/html/rfc7231#section-4.2.1) (`GET`, `HEAD`, `OPTIONS`, `TRACE`). If any state-changing operation in the application is reachable via a `GET` request, `SameSite=Lax` will not stop it. This is the single most common way `SameSite`-based defenses fail in practice. Review every `GET` endpoint and ensure that none of them mutate server-side state.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q008",
+    "type": "comparative",
+    "category": "attacks",
+    "answerable": true,
+    "question": "what's the actual difference between CSRF and SSRF -- and do they need different fixes, or can one set of defenses cover both?",
+    "answer": "CSRF tricks an authenticated user's browser into an unwanted action on a trusted site; browser requests automatically include cookies, including session cookies. SSRF abuses the application itself to interact with internal or external networks or the machine, for example by fetching a user-supplied image URL or webhook destination. They affect different request paths, so protecting the authenticated browser request does not by itself address misuse of the application's own network requests; both attack surfaces need attention.",
+    "source_file": "Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.md",
+    "source_section": "Introduction",
+    "source_passage": "A [Cross-Site Request Forgery (CSRF)](https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/06-Session_Management_Testing/05-Testing_for_Cross_Site_Request_Forgery) attack occurs when a malicious web site, email, blog, instant message, or program tricks an authenticated user's web browser into performing an unwanted action on a trusted site. If a target user is authenticated to the site, unprotected target sites cannot distinguish between legitimate authorized requests and forged authenticated requests.\n\nSince browser requests automatically include all cookies including session cookies, this attack works unless proper authorization is used, which means that the target site's challenge-response mechanism does not verify the identity and authority of the requester. In effect, CSRF attacks make a target system perform attacker-specified functions via the victim's browser without the victim's knowledge (normally until after the unauthorized actions have been committed).",
+    "extra_sources": [
+      {
+        "source_file": "Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md",
+        "source_section": "Context",
+        "source_passage": "SSRF is an attack vector that abuses an application to interact with the internal/external network or the machine itself. One of the enablers for this vector is the mishandling of URLs, as showcased in the following examples:\n\n- Image on an external server (*e.g.* user enters image URL of their avatar for the application to download and use).\n- Custom [WebHook](https://en.wikipedia.org/wiki/Webhook) (users have to specify Webhook handlers or Callback URLs).\n- Internal requests to interact with another service to serve a specific functionality. Most of the times, user data is sent along to be processed, and if poorly handled, can perform specific injection attacks."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Expanded both context passages to include automatic cookie inclusion and server-side request examples; removed detailed mitigation claims not established by these passages."
+  },
+  {
+    "id": "q012",
+    "type": "unanswerable",
+    "category": "attacks",
+    "answerable": false,
+    "question": "if I switch our LDAP connection over to LDAPS (LDAP over SSL/TLS), does that stop LDAP injection attacks on its own, or do I still need to escape/bind input separately?",
+    "answer": "I don't know -- this corpus does not cover LDAPS or LDAP-over-TLS/SSL at all, so I can't confirm what effect it has on LDAP injection.",
+    "source_file": null,
+    "source_section": null,
+    "source_passage": null,
+    "extra_sources": [],
+    "absence_check": "grep -ril 'LDAPS' corpus/CheatSheetSeries/cheatsheets/ -> no hits; grep -ril 'LDAP over' corpus/CheatSheetSeries/cheatsheets/ -> no hits; grep -ril 'StartTLS' corpus/CheatSheetSeries/cheatsheets/ -> no hits",
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q017",
+    "type": "factual",
+    "category": "attacks",
+    "answerable": true,
+    "question": "Say our parser needs DTD support for a legacy integration, and while locking down external entities we find one hardening setting isn't supported by our parser version. What does the cheat sheet say we should do in that case?",
+    "answer": "Treat the unsupported security setting as a configuration failure and stop — don't continue processing the untrusted XML with only partial hardening applied.",
+    "source_file": "XML_External_Entity_Prevention_Cheat_Sheet.md",
+    "source_section": "General Guidance",
+    "source_passage": "Treat an unsupported security setting as a configuration failure. Do not continue processing untrusted XML with partial hardening.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q024",
+    "type": "factual",
+    "category": "attacks",
+    "answerable": true,
+    "question": "If we're stuck using an object literal somewhere and can't switch to Map/Set or Object.create(null), what fallback does this cheat sheet suggest, and how seriously does it treat that option?",
+    "answer": "As a last resort, you can set the __proto__ property directly in the literal (e.g. {__proto__: null}) to stop it inheriting from Object.prototype — but it's explicitly framed as a last resort, not a first choice.",
+    "source_file": "Prototype_Pollution_Prevention_Cheat_Sheet.md",
+    "source_section": "Suggested protection mechanisms > If objects or object literals are required",
+    "source_passage": "If objects have to be used then they should be created using the `Object.create(null)` API to ensure they don't inherit from the Object prototype:\n\n```javascript\nlet obj = Object.create(null);\n```\n\nIf object literals are required then as a last resort you could use the `__proto__` property:\n\n```javascript\nlet obj = {__proto__:null};\n```",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Expanded the passage to include the null-prototype explanation and the actual object-literal example supporting the answer."
+  },
+  {
+    "id": "q028",
+    "type": "factual",
+    "category": "attacks",
+    "answerable": true,
+    "question": "For the Same Origin Policy, exactly which three parts of a URL have to match for two pages to count as the same origin?",
+    "answer": "Protocol, port, and host.",
+    "source_file": "XS_Leaks_Cheat_Sheet.md",
+    "source_section": "Same Origin Policy (SOP)",
+    "source_passage": "Two URLs are considered as **same-origin** if their **protocol**, **port**, and **host** are the same",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q031",
+    "type": "multi_sheet",
+    "category": "identity",
+    "answerable": true,
+    "question": "After a user resets their password, should I trust their session right away for sensitive actions like changing their email, or do I need extra verification -- and which OWASP guidance covers that?",
+    "answer": "The Authentication Cheat Sheet treats account recovery and password resets as high-risk events for which re-authentication is critical. Do not automatically trust that session for subsequent sensitive actions. The Multifactor Authentication Cheat Sheet says that, depending on the application's functionality, it may also be appropriate to require MFA for actions such as changing the email address, changing passwords or security questions, disabling MFA, or elevating to an administrative session.",
+    "source_file": "Authentication_Cheat_Sheet.md",
+    "source_section": "Authentication Cheat Sheet > Authentication General Guidelines > Re-authentication After Risk Events",
+    "source_passage": "Re-authentication is critical when an account has experienced high-risk activity such as account recovery, password resets, or suspicious behavior patterns. This section outlines when and how to trigger re-authentication to protect users and prevent unauthorized access.",
+    "extra_sources": [
+      {
+        "source_file": "Multifactor_Authentication_Cheat_Sheet.md",
+        "source_section": "Multifactor Authentication Cheat Sheet > Implementing MFA > When to Require MFA",
+        "source_passage": "The most important place to require MFA on an application is when the user logs in. However, depending on the functionality available, it may also be appropriate to require MFA for performing sensitive actions, such as:\n\n- Changing passwords or security questions.\n- Changing the email address associated with the account.\n- Disabling MFA.\n- Elevating a user session to an administrative session."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Preserved the MFA source qualification: MFA for sensitive actions may be appropriate depending on functionality, rather than being an unconditional requirement."
+  },
+  {
+    "id": "q032",
+    "type": "code_table",
+    "category": "identity",
+    "answerable": true,
+    "question": "What's the real difference between credential stuffing and password spraying from an attacker's point of view?",
+    "answer": "Credential stuffing tests username/password pairs stolen from a breach of another site against your accounts, while password spraying tests a single weak password against a large number of different accounts (as opposed to brute force, which tests many passwords against one account).",
+    "source_file": "Authentication_Cheat_Sheet.md",
+    "source_section": "Authentication Cheat Sheet > Authentication General Guidelines > Protect Against Automated Attacks",
+    "source_passage": "| Attack Type         | Description                                                                                      |\n|---------------------|--------------------------------------------------------------------------------------------------|\n| Brute Force         | Testing multiple passwords from a dictionary or other source against a single account.           |\n| Credential Stuffing | Testing username/password pairs obtained from the breach of another site.                        |\n| Password Spraying   | Testing a single weak password against a large number of different accounts.                     |",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q037",
+    "type": "comparative",
+    "category": "identity",
+    "answerable": true,
+    "question": "If my app uses passkeys for login, can I tell auditors that's already multi-factor authentication, or do I still need a separate second factor?",
+    "answer": "Not automatically. A passkey only counts as MFA when the relying party requires and server-side validates the user-verification (UV) flag, which proves a local PIN or biometric check happened -- not just user presence (UP), which is satisfied by a bare touch. Both the MFA Cheat Sheet and the Passkey Security Cheat Sheet agree on this: request UV and verify the returned UV flag before treating a passkey login as satisfying a multi-factor requirement.",
+    "source_file": "Multifactor_Authentication_Cheat_Sheet.md",
+    "source_section": "Multifactor Authentication Cheat Sheet > Implementing MFA > Improving User Experience > Passkeys",
+    "source_passage": "Passkeys can provide phishing-resistant MFA by combining possession of the credential private key with local [PIN](#passwords-and-pins) or [biometric](#biometrics) verification. When using passkeys as MFA, require user verification and [validate the returned user-verification flag on the server](https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion); a touch confirming user presence alone is not a second factor.",
+    "extra_sources": [
+      {
+        "source_file": "Passkey_Security_Cheat_Sheet.md",
+        "source_section": "Passkey Security Cheat Sheet > Understand the Security Model > Components and Terms",
+        "source_passage": "Do not treat UP and UV as equivalent. Require UV when the passkey is expected to satisfy a multi-factor or other high-assurance authentication policy. A passkey is not automatically multi-factor merely because an authenticator supports UV; the RP must [request UV and verify the returned UV flag](https://www.w3.org/TR/webauthn-3/#user-verification)."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q038",
+    "type": "factual",
+    "category": "identity",
+    "answerable": true,
+    "question": "Can I use SMS codes as the second factor for a healthcare app, or is that considered too risky these days?",
+    "answer": "The cheat sheet says not to use SMS for high-value or PII-handling applications, which includes the healthcare scenario in the question. It states that NIST SP 800-63B-4 designates SMS/PSTN-delivered codes as a restricted authenticator because of SS7 interception, SIM-swap, and number-porting attacks.",
+    "source_file": "Multifactor_Authentication_Cheat_Sheet.md",
+    "source_section": "Multifactor Authentication Cheat Sheet > Something You Have > SMS Messages and Phone Calls",
+    "source_passage": "NIST SP 800-63B-4 designates SMS and PSTN-delivered codes as a *restricted* authenticator because of SS7 interception, SIM-swap, and number-porting attacks. Do not use SMS for high-value or PII-handling applications.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Separated the source's attribution of restricted status to NIST from the cheat sheet's own instruction; avoided presenting that instruction as a legal prohibition."
+  },
+  {
+    "id": "q043",
+    "type": "comparative",
+    "category": "identity",
+    "answerable": true,
+    "question": "My team wants to 'just use JWTs for SSO instead of dealing with OAuth or SAML' -- is that actually a like-for-like swap?",
+    "answer": "No. JWT describes a token carrying claims that can be signed and/or encrypted. It is used inside other systems: OpenID Connect's ID token is a JWT, and an OAuth 2 access token can be a JWT. The OAuth sheet describes OAuth as a basis for federated login and OpenID Connect as its identity layer; the SAML sheet describes exchanging authentication and authorization information and a browser SSO profile. Choosing JWT as a token does not replace those login and federation mechanisms.",
+    "source_file": "JSON_Web_Token_Cheat_Sheet.md",
+    "source_section": "JSON Web Token Cheat Sheet > Introduction",
+    "source_passage": "[**JSON Web Tokens**](https://datatracker.ietf.org/doc/html/rfc7519) (JWT) are security tokens for carrying information (**claims**), often about a user, an application, etc. (**subject**). JWTs can provide authenticity of the claims (**signed JWT**) and/or confidentiality of the claims (**encrypted JWT**). In addition, JWT defines [standard claims](https://www.iana.org/assignments/jwt/jwt.xhtml).\n\nJWTs are used in a wide range of applications such as:\n\n- In [OpenID Connect](https://openid.net/specs/openid-connect-core-1_0.html), the [ID token](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) is a JWT used to represent the identity and attributes of the connected user.\n- In [OAuth 2](https://datatracker.ietf.org/doc/html/rfc6749), the access token used to obtain access to a protected resource [can be a JWT](https://datatracker.ietf.org/doc/html/rfc9068).",
+    "extra_sources": [
+      {
+        "source_file": "OAuth2_Cheat_Sheet.md",
+        "source_section": "OAuth 2.0 Protocol Cheatsheet",
+        "source_passage": "This cheatsheet describes the best current security practices for [OAuth 2.0](https://www.rfc-editor.org/rfc/rfc6749.html) as derived from its RFC. OAuth became the standard for API protection and the basis for federated login using OpenID Connect. OpenID Connect 1.0 is a simple identity layer on top of the OAuth 2.0 protocol. It enables clients to verify the identity of the end user based on the authentication performed by an authorization server, as well as to obtain basic profile information about the end user in an interoperable and REST-like manner."
+      },
+      {
+        "source_file": "SAML_Security_Cheat_Sheet.md",
+        "source_section": "SAML Security Cheat Sheet > Introduction",
+        "source_passage": "The **S**ecurity **A**ssertion **M**arkup **L**anguage ([SAML](https://en.wikipedia.org/wiki/Security_Assertion_Markup_Language)) is an open standard for exchanging authorization and authentication information. The *Web Browser SAML/SSO Profile with Redirect/POST bindings* is one of the most common SSO implementation. This cheatsheet will focus primarily on that profile."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Expanded the JWT, OAuth, and SAML passages to support the token-versus-login-protocol distinction and the ID/access-token examples; removed the uncited delegated-authorization characterization."
+  },
+  {
+    "id": "q044",
+    "type": "multi_sheet",
+    "category": "identity",
+    "answerable": true,
+    "question": "If I decide to use a JWT as my session token, what do I actually need to nail down about expiration so I don't end up with sessions I can't kill early?",
+    "answer": "Plan session invalidation separately from expiration. The JWT sheet gives a denylist of revoked sessions/tokens as one solution, while noting that it makes sessions no longer completely stateless. The Session Management sheet requires an idle timeout and an absolute timeout regardless of activity, with expiration enforced server-side. At the absolute limit, invalidate the session and require re-authentication. JWT-based sessions still need those expiration and invalidation controls.",
+    "source_file": "JSON_Web_Token_Cheat_Sheet.md",
+    "source_section": "JSON Web Token Cheat Sheet > Considerations about using JWTs > Not using JWTs",
+    "source_passage": "JWTs are often suggested for “stateless” user sessions. However, if you use JWTs for user sessions, you will need a solution for managing session invalidation. This can be achieved using a deny list of revoked sessions/tokens. If your application implements such a deny list, user sessions won't be completely stateless anymore which might defeat the benefits of stateless sessions.",
+    "extra_sources": [
+      {
+        "source_file": "Session_Management_Cheat_Sheet.md",
+        "source_section": "Session Management Cheat Sheet > Session Expiration > Automatic Session Expiration > Absolute Timeout",
+        "source_passage": "All sessions should implement an absolute timeout, regardless of session activity. This timeout defines the maximum amount of time a session can be active, closing and invalidating the session upon the defined absolute period since the given session was initially created by the web application. After invalidating the session, the user is forced to (re)authenticate again in the web application and establish a new session."
+      },
+      {
+        "source_file": "Session_Management_Cheat_Sheet.md",
+        "source_section": "Session Management Cheat Sheet > Session Expiration > Automatic Session Expiration > Idle Timeout",
+        "source_passage": "All sessions should implement an idle or inactivity timeout. This timeout defines the amount of time a session will remain active in case there is no activity in the session, closing and invalidating the session upon the defined idle period since the last HTTP request received by the web application for a given session ID.\n\nThe idle timeout limits the chances an attacker has to guess and use a valid session ID from another user. However, if the attacker is able to hijack a given session, the idle timeout does not limit the attacker's actions, as they can generate activity on the session periodically to keep the session active for longer periods of time.\n\nSession timeout management and expiration must be enforced server-side. If the client is used to enforce the session timeout, for example using the session token or other client parameters to track time references (e.g. number of minutes since login time), an attacker could manipulate these to extend the session duration."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Removed unsupported short-exp/refresh prescriptions and the claim that a denylist is the only invalidation solution; expanded session evidence to cover re-authentication and server-side idle expiration."
+  },
+  {
+    "id": "q045",
+    "type": "code_table",
+    "category": "identity",
+    "answerable": true,
+    "question": "In the JWT algorithm table, which signature scheme is marked 'Not recommended', and which traditional alternatives are recommended?",
+    "answer": "RSASSA-PKCS1-v1_5 (identifiers RS256/RS384/RS512) is marked 'Not recommended' in the algorithm table. Prefer ECDSA (ES256/ES384/ES512) or RSASSA-PSS (PS256/PS384/PS512), both 'Recommended', or EdDSA where library support allows.",
+    "source_file": "JSON_Web_Token_Cheat_Sheet.md",
+    "source_section": "JSON Web Token Cheat Sheet > Considerations about using JWTs > Public-key Signatures",
+    "source_passage": "| Signature scheme      | Identifier                      | Type         | Status\n|-----------------------|---------------------------------|--------------|---------\n| EdDSA                 | EdDSA, Ed448, Ed25519           | Traditional  | Recommended, limited support\n| ECDSA                 | ES256, ES384, ES512             | Traditional  | Recommended\n| RSASSA-PSS            | PS256, PS384, PS512             | Traditional  | Recommended\n| RSASSA-PKCS1-v1_5     | RS256, RS384, RS512             | Traditional  | Not recommended",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Made the question explicitly ask for the table's recommendation status rather than implying a universal algorithm prohibition."
+  },
+  {
+    "id": "q046",
+    "type": "factual",
+    "category": "identity",
+    "answerable": true,
+    "question": "What's the actual difference between a passkey just confirming 'someone touched the key' versus confirming it's really the right person?",
+    "answer": "User presence (UP) shows that a person interacted with the authenticator. User verification (UV) shows that the authenticator locally verified the user, for example with a PIN or biometric. They are not equivalent: when a passkey must satisfy a multi-factor or other high-assurance policy, the relying party must request UV and verify the returned UV flag.",
+    "source_file": "Passkey_Security_Cheat_Sheet.md",
+    "source_section": "Passkey Security Cheat Sheet > Understand the Security Model > Components and Terms",
+    "source_passage": "- **User presence (UP)** shows that a person interacted with the authenticator.\n- **User verification (UV)** shows that the authenticator locally verified the user, for example with a PIN or biometric.\n\nDo not treat UP and UV as equivalent. Require UV when the passkey is expected to satisfy a multi-factor or other high-assurance authentication policy. A passkey is not automatically multi-factor merely because an authenticator supports UV; the RP must [request UV and verify the returned UV flag](https://www.w3.org/TR/webauthn-3/#user-verification).",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Expanded evidence to include the UV policy requirement; clarified local verification without implying proof of real-world identity."
+  },
+  {
+    "id": "q047",
+    "type": "procedural",
+    "category": "identity",
+    "answerable": true,
+    "question": "What should my server actually check when it gets back a WebAuthn registration response, before saving a new passkey?",
+    "answer": "Verify the client data type is `webauthn.create`; the challenge exactly matches the issued challenge; the origin is an exact member of the RP allowlist; the RP ID hash matches; UP is set and UV is set when required; the algorithm was offered and is permitted; the credential public key and ID are structurally valid; requested extensions follow RP policy; and attestation is verified when policy requires it. Store the credential only after all checks succeed, bind it to the account in server-side ceremony state rather than a client-returned account identifier, enforce credential ID uniqueness across the RP, and make account association changes auditable.",
+    "source_file": "Passkey_Security_Cheat_Sheet.md",
+    "source_section": "Passkey Security Cheat Sheet > Secure Passkey Registration > Verify the Registration Response",
+    "source_passage": "- The client data type is `webauthn.create`.\n- The returned challenge exactly matches the issued challenge.\n- The origin is an exact member of the RP's allowlist.\n- The RP ID hash matches the expected RP ID.\n- The UP flag is set and the UV flag is set when UV was required.\n- The public-key algorithm is one the RP offered and permits.\n- The credential public key and credential ID are structurally valid.\n- Any requested extensions are processed according to RP policy.\n- Attestation is verified when the RP's policy requires it.\n\nStore the credential only after all checks succeed. Associate it with the account from the server-side ceremony state, never an account identifier returned by the client. Enforce credential ID uniqueness across the RP and make the account association change auditable.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Included the source's storage gate and account-association requirements; restored the requirement that the offered public-key algorithm is also permitted."
+  },
+  {
+    "id": "q053",
+    "type": "procedural",
+    "category": "identity",
+    "answerable": true,
+    "question": "What's a safe way to use security questions in a 'forgot password' flow without letting attackers figure out which emails are registered?",
+    "answer": "Don't show the security question until after the user has proven ownership of the email address. Have them submit their email (with a CAPTCHA), always show a generic message like 'if that email is correct, an email will be sent to it', email a single-use random link, and only present the security question(s) after they click that link. Asking the question up front -- before verifying the email -- would let an attacker enumerate which addresses have accounts. After a correct answer to the security question(s), allow the user to enter a new password.",
+    "source_file": "Choosing_and_Using_Security_Questions_Cheat_Sheet.md",
+    "source_section": "Choosing and Using Security Questions Cheat Sheet > Using Security Questions > When to Use Security Questions > Forgotten Password or Lost MFA Token Flow",
+    "source_passage": "Forgotten password functionality often provides a mechanism for attackers to enumerate user accounts if it is not correctly implemented. The following flow avoids this issue by only displaying the security questions once the user has proved ownership of the email address:\n\n- The user enters email address (and solves a CAPTCHA).\n- The application displays a generic message such as \"If the email address was correct, an email will be sent to it\".\n- An email with a randomly generated, single-use link is sent to the user.\n- The user clicks the link.\n- The user is presented with the security question(s).\n- If the answer is correct, the user can enter a new password.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Included the introductory explanation supporting the enumeration claim and completed the flow with successful answer verification before setting a new password."
+  },
+  {
+    "id": "q057",
+    "type": "unanswerable",
+    "category": "identity",
+    "answerable": false,
+    "question": "What FIDO2 authenticator certification level do I need in order to meet NIST AAL3 for a government-facing login?",
+    "answer": "I don't know.",
+    "source_file": null,
+    "source_section": null,
+    "source_passage": null,
+    "extra_sources": [],
+    "absence_check": "At corpus commit a5fbb7f886c02e3418e17f5525874a868cca49e4: rg -ni 'FIDO.*certification level|authenticator certification level|AAL3|FIPS|certification|certified' cheatsheets/. No FIDO2 certification-level-to-AAL3 mapping was found. Passkey_Security_Cheat_Sheet.md mentions that syncable authenticators are not allowed at AAL3, but does not specify the requested FIDO2 certification level.",
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Broadened the absence check beyond one exact phrase and recorded related but insufficient AAL3 coverage."
+  },
+  {
+    "id": "q061",
+    "type": "procedural",
+    "category": "devsecops",
+    "answerable": true,
+    "question": "How can I run a Docker container with an unprivileged user or map container root to an unprivileged host user?",
+    "answer": "Three options: (1) at runtime, pass the -u option to docker run (e.g. docker run -u 4000 alpine); (2) at build time, add a dedicated user in the Dockerfile with groupadd/useradd and then a USER directive before the app runs; or (3) enable user namespace remapping (--userns-remap=default) in the Docker daemon so container root maps to an unprivileged host user.",
+    "source_file": "Docker_Security_Cheat_Sheet.md",
+    "source_section": "Docker Security Cheat Sheet > Rules > RULE #2 - Set a user",
+    "source_passage": "Configuring the container to use an unprivileged user is the best way to prevent privilege escalation attacks. This can be accomplished in three different ways as follows:\n\n1. During runtime using `-u` option of `docker run` command e.g.:\n\n```bash\ndocker run -u 4000 alpine\n```\n\n2. During build time. Simply add user in Dockerfile and use it. For example:\n\n```dockerfile\nFROM alpine\nRUN groupadd -r myuser && useradd -r -g myuser myuser\n#    <HERE DO WHAT YOU HAVE TO DO AS A ROOT USER LIKE INSTALLING PACKAGES ETC.>\nUSER myuser\n```\n\n3. Enable user namespace support (`--userns-remap=default`) in [Docker daemon](https://docs.docker.com/engine/security/userns-remap/#enable-userns-remap-on-the-daemon)",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Distinguished a non-root container user from user namespace remapping, which limits host privileges without necessarily changing container UID 0. Kept the source example unchanged; its Alpine groupadd/useradd commands may require additional packages."
+  },
+  {
+    "id": "q062",
+    "type": "comparative",
+    "category": "devsecops",
+    "answerable": true,
+    "question": "Docker Secrets seem like a solid way to handle sensitive data in containers — can I rely on the same approach once those containers are running under Kubernetes instead of plain Docker?",
+    "answer": "The Docker sheet says not to assume the same approach applies to Kubernetes. It describes Docker Swarm Secrets as distributed over mutual TLS and stored in an encrypted Raft log, while warning that Kubernetes Secrets are stored without encryption by default. The Kubernetes sheet makes the at-rest distinction explicit: configure a non-`identity` encryption provider first for Secrets, then rewrite existing Secrets to encrypt previously stored data. The Docker sheet also suggests third-party tools.",
+    "source_file": "Docker_Security_Cheat_Sheet.md",
+    "source_section": "Docker Security Cheat Sheet > Rules > RULE #12 - Utilize Docker Secrets for Sensitive Data Management",
+    "source_passage": "Docker Secrets provide a secure way to store and manage sensitive data such as passwords, tokens, and SSH keys. Using Docker Secrets helps in avoiding the exposure of sensitive data in container images or in runtime commands.\n\n```bash\ndocker secret create my_secret /path/to/super-secret-data.txt\ndocker service create --name web --secret my_secret nginx:latest\n```\n\nFor local Docker Compose, [file-backed secrets are bind mounts](https://docs.docker.com/compose/how-tos/use-secrets/#use-secrets). Protect the source files on the host with appropriate access permissions and storage encryption; declaring a Compose secret does not encrypt these files. This differs from [Swarm-managed secrets](https://docs.docker.com/engine/swarm/secrets/#how-docker-manages-secrets), which are distributed over mutual TLS and stored in an encrypted Raft log:\n\n```yaml\nversion: \"3.8\"\nsecrets:\n  my_secret:\n    file: ./super-secret-data.txt\nservices:\n  web:\n    image: nginx:latest\n    secrets:\n      - my_secret\n```\n\nWhile Docker Secrets generally provide a secure way to manage sensitive data in Docker environments, this approach is not recommended for Kubernetes, where secrets are stored in plaintext by default. In Kubernetes, consider using additional security measures such as etcd encryption, or third-party tools. Refer to the [Secrets Management Cheat Sheet](Secrets_Management_Cheat_Sheet.md) and [Kubernetes Security Cheat Sheet](Kubernetes_Security_Cheat_Sheet.md) for more information.",
+    "extra_sources": [
+      {
+        "source_file": "Kubernetes_Security_Cheat_Sheet.md",
+        "source_section": "Kubernetes Security Cheat Sheet > Kubernetes Security Best Practices: Deploy Phase > Securing data > Encrypt secrets at rest",
+        "source_passage": "Kubernetes [supports encryption at rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/) for Secret resources in etcd, but the API server stores resources without at-rest encryption by default. Configure a non-`identity` encryption provider as the first provider for Secrets and [rewrite existing Secrets](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/#ensure-all-secrets-are-encrypted) to encrypt previously stored data."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Expanded Docker evidence to support mutual TLS and encrypted Raft storage; clarified the Kubernetes default concerns at-rest storage. The Docker sheet's imprecise Kubernetes comparison is retained as corpus guidance."
+  },
+  {
+    "id": "q074",
+    "type": "factual",
+    "category": "devsecops",
+    "answerable": true,
+    "question": "Say a library maintainer flat-out refuses to fix a CVE in their package, or just never responds at all — what does this cheat sheet say to do?",
+    "answer": "This is Case 3, a complex, time-consuming last resort in which the team may need to patch the dependency itself; an open-source fix can be contributed upstream. Study a better-maintained alternative in parallel, or, for a commercial component with support, involve the Chief Risk Officer (or CISO) to pressure the provider. Identify the dependency's use, examine the CVE and upstream advisory/issue/fix to establish the required change, and do not assume a generic wrapper fixes an unclear root cause. Verify the patch with a reproducer that fails before the patch and passes after it, keep dependency tests passing, and run available application tests for regressions. Suppress a scanner alert per CVE only after the patch is verified; changing a version string is not a fix.",
+    "source_file": "Vulnerable_Dependency_Management_Cheat_Sheet.md",
+    "source_section": "Vulnerable Dependency Management Cheat Sheet > Cases > Case 3 > Context",
+    "source_passage": "Provider informs the team that they cannot fix the issue, so no patched version will be released at all (applies also if provider does not want to fix the issue or does not answer at all).\n\nIn this case the only information given to the development team is the [CVE](https://en.wikipedia.org/wiki/Common_Vulnerabilities_and_Exposures).\n\n**Notes:**\n\n- This case is really complex and time consuming and is generally used as last resort.\n- If the impacted dependency is an open source library then we, the development team, can create a patch and create [pull request](https://help.github.com/en/articles/about-pull-requests) - that way we can protect our company/application from the source as well as helping others secure their applications.",
+    "extra_sources": [
+      {
+        "source_file": "Vulnerable_Dependency_Management_Cheat_Sheet.md",
+        "source_section": "Vulnerable Dependency Management Cheat Sheet > Cases > Case 3 > Approach",
+        "source_passage": "**Step 1:**\n\nIf we are in this case due to one of the following conditions, it's a good idea to start a parallel study to find another component better maintained or if it's a commercial component with support **then put pressure** on the provider with the help of your [Chief Risk Officer](https://en.wikipedia.org/wiki/Chief_risk_officer) (fallback possible to [Chief Information Security Officer](https://en.wikipedia.org/wiki/Chief_information_security_officer)):\n\n- Provider does not want to fix the issue.\n- Provider does not answer at all.\n\nIn all cases, here, we need to handle the vulnerability right now.\n\n**Step 2:**\n\nAs we know the vulnerable dependency, we know where it is used in the application (if it's a transitive dependency then we can identify the first level dependency using it using the [IDE](https://en.wikipedia.org/wiki/Integrated_development_environment) built-in feature or the dependency management system used (Maven, Gradle, NuGet, npm, etc.). Note that IDE is also used to identify the calls to the dependency.\n\nIdentifying calls to this dependency is fine but it is the first step. The team still lacks information on what kind of patching needs to be performed.\n\nUse the CVE description to identify the reported weakness, then consult the upstream advisory, issue, and fix to determine the affected behavior and required change. A vulnerability category alone does not establish which checks or configuration changes will prevent exploitation. If the root cause is still unclear, do not assume that a wrapper from [Case 2](#case-2) fixes it."
+      },
+      {
+        "source_file": "Vulnerable_Dependency_Management_Cheat_Sheet.md",
+        "source_section": "Vulnerable Dependency Management Cheat Sheet > Cases > Case 3 > Approach",
+        "source_passage": "**Step 3:**\n\nIf possible, create a unit test that mimics the vulnerability in order to ensure that the patch is effective and have a way to continuously ensure that the patch is in place during the evolution of the project.\n\nIf you have a set of automated unit or integration or functional or security tests that exists for the application then run them to verify that the patch does not impact the stability of the application.\n\nA patch written in-house does not get the benefit of the doubt that an upstream release gets, so hold it to an explicit bar before considering the vulnerability handled:\n\n- The test reproducing the vulnerability fails against the unpatched dependency and passes against the patched one. A test that passes in both cases proves nothing about the patch.\n- The tests of the dependency itself still pass, which catches behavior that the patch broke but the application does not exercise directly.\n- The alert raised by the detection tool is suppressed per [CVE](https://en.wikipedia.org/wiki/Common_Vulnerabilities_and_Exposures) only once the two points above hold. Suppressing the alert, or changing a version string so that the tool stops matching it, records a fix but does not make one.\n\nExpect the tool to keep flagging the dependency even after a correct patch, because [looking at the version number of a package will not tell you whether the fix is present](https://access.redhat.com/security/updates/backporting). That is a reporting problem to be handled with a scoped suppression, not a reason to change the patch."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Added Case 3 approach evidence, preserved the commercial-support condition for escalation, and included patch verification rather than treating patching alone as completion."
+  },
+  {
+    "id": "q077",
+    "type": "code_table",
+    "category": "frameworks",
+    "answerable": true,
+    "question": "I ran Django's `check --deploy` command before going to prod and one of the warnings flagged my session cookie setting — which warning code was that, and what's it actually checking for?",
+    "answer": "That's warning security.W012: SESSION_COOKIE_SECURE is not set to True. It means your session cookie isn't restricted to HTTPS-only connections, which makes it easier for someone sniffing network traffic to hijack a user's session.",
+    "source_file": "Django_Security_Cheat_Sheet.md",
+    "source_section": "Django's built-in command `check --deploy`",
+    "source_passage": "```\n$ ./manage.py check --deploy\nSystem check identified some issues:\n\nWARNINGS:\n?: (security.W004) You have not set a value for the SECURE_HSTS_SECONDS setting. If your entire site is served only over SSL, you may want to consider setting a value and enabling HTTP Strict Transport Security. Be sure to read the documentation first; enabling HSTS carelessly can cause serious, irreversible problems.\n?: (security.W008) Your SECURE_SSL_REDIRECT setting is not set to True. Unless your site should be available over both SSL and non-SSL connections, you may want to either set this setting True or configure a load balancer or reverse-proxy server to redirect all connections to HTTPS.\n?: (security.W009) Your SECRET_KEY has less than 50 characters, less than 5 unique characters, or it's prefixed with 'django-insecure-' indicating that it was generated automatically by Django. Please generate a long and random value, otherwise many of Django's security-critical features will be vulnerable to attack.\n?: (security.W012) SESSION_COOKIE_SECURE is not set to True. Using a secure-only session cookie makes it more difficult for network traffic sniffers to hijack user sessions.\n?: (security.W016) You have 'django.middleware.csrf.CsrfViewMiddleware' in your MIDDLEWARE, but you have not set CSRF_COOKIE_SECURE to True. Using a secure-only CSRF cookie makes it more difficult for network traffic sniffers to steal the CSRF token.\n?: (security.W018) You should not have DEBUG set to True in deployment.\n?: (security.W020) ALLOWED_HOSTS must not be empty in deployment.\n\nSystem check identified 7 issues (0 silenced).\n\n```",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Included the actual code-block fences around the deployment-check output, retaining the warning-to-setting mapping."
+  },
+  {
+    "id": "q078",
+    "type": "factual",
+    "category": "frameworks",
+    "answerable": true,
+    "question": "My Django app's SECRET_KEY is pretty short right now — what length and character mix should I actually be aiming for?",
+    "answer": "At least 50 characters, with a mix of letters, digits, and symbols.",
+    "source_file": "Django_Security_Cheat_Sheet.md",
+    "source_section": "Key Management",
+    "source_passage": "The `SECRET_KEY` parameter in settings.py is used for cryptographic signing and should be kept confidential. Consider the following recommendations:\n\n- Generate a key at least 50 characters or more, containing a mix of letters, digits, and symbols.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q082",
+    "type": "unanswerable",
+    "category": "frameworks",
+    "answerable": false,
+    "question": "What's the default expiration time for a Laravel Sanctum personal access token, and which config file do I edit to shorten it?",
+    "answer": "I don't know.",
+    "source_file": null,
+    "source_section": null,
+    "source_passage": null,
+    "extra_sources": [],
+    "absence_check": "grep -ril 'sanctum.php' cheatsheets/ -> no hits; grep -rin 'expiration' cheatsheets/Laravel_Cheat_Sheet.md -> no hits (Laravel_Cheat_Sheet.md only names Sanctum as an API token authentication package, with no default-expiration or config-file details); grep -ril 'personal access token' cheatsheets/ -> only GitHub_Actions_Security_Cheat_Sheet.md, unrelated to Laravel Sanctum.",
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q086",
+    "type": "procedural",
+    "category": "frameworks",
+    "answerable": true,
+    "question": "When I set up the application cookie for ASP.NET Core Identity, what should I actually configure for HttpOnly/Secure/SameSite, and is there anything HttpOnly won't save me from?",
+    "answer": "Set Cookie.HttpOnly = true and Cookie.SecurePolicy = CookieSecurePolicy.Always, and choose a Cookie.SameSite value that fits your sign-in flow (test federated sign-in before tightening it). HttpOnly only blocks script access to the cookie itself — it does not stop an injected script from riding along and making authenticated requests using that cookie.",
+    "source_file": "DotNet_Security_Cheat_Sheet.md",
+    "source_section": "Authentication and authorization > Authentication cookies",
+    "source_passage": "Set `Cookie.HttpOnly = true` and `Cookie.SecurePolicy = CookieSecurePolicy.Always`. Choose `Cookie.SameSite` to fit the authentication flow; test federated sign-in before tightening it. `HttpOnly` prevents script access to the cookie, but does not stop injected scripts from making authenticated requests.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q087",
+    "type": "procedural",
+    "category": "frameworks",
+    "answerable": true,
+    "question": "What are the actual steps to get CSRF protection working across an ASP.NET Core MVC app, including the AJAX calls?",
+    "answer": "Register AutoValidateAntiforgeryTokenAttribute globally for unsafe HTTP methods in your MVC app (Razor Pages already have antiforgery protection by default). For any form not covered by that automatic token generation, add @Html.AntiForgeryToken() explicitly. For JavaScript/AJAX requests, send the request token in the configured header or form field, together with the antiforgery cookie.",
+    "source_file": "DotNet_Security_Cheat_Sheet.md",
+    "source_section": "Input handling > Cross-site request forgery",
+    "source_passage": "- In MVC applications, register `AutoValidateAntiforgeryTokenAttribute` globally for unsafe HTTP methods. Razor Pages provide antiforgery protection by default. These MVC filters are not a substitute for the antiforgery configuration required by other endpoint types.\n- Pair token generation with server-side validation. For forms not covered by automatic token generation, use `@Html.AntiForgeryToken()` explicitly. JavaScript requests must send the request token in the configured header or form field, along with the antiforgery cookie.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q103",
+    "type": "multi_sheet",
+    "category": "api_architecture",
+    "answerable": true,
+    "question": "Once a partner's webhook delivery is verified at our edge, it fans out into work across several of our internal microservices -- what should change about how we log that event as it moves from the webhook endpoint into those services?",
+    "answer": "At the webhook endpoint itself, log only metadata -- timestamp, source IP, HTTP method, response status, event ID, event type, and processing latency -- and never the full request body, signing secrets, or the Authorization/signature header values. As the event then flows through your internal microservices, generate a correlation ID that uniquely identifies the whole call chain and have every service include that same correlation ID in its own log messages, so you can group and trace the event's path across services.",
+    "source_file": "Webhook_Security_Cheat_Sheet.md",
+    "source_section": "Endpoint Hardening > Logging and Monitoring",
+    "source_passage": "- Log the timestamp, source IP, HTTP method, response status, event ID, event type, and processing latency.\n- Do not log full request bodies (they often contain personal data), signing secrets, or `Authorization` and signature header values; see [Data to exclude](Logging_Cheat_Sheet.md#data-to-exclude) in the Logging Cheat Sheet.",
+    "extra_sources": [
+      {
+        "source_file": "Microservices_Security_Cheat_Sheet.md",
+        "source_section": "Logging",
+        "source_passage": "Microservices shall generate a correlation ID that uniquely identifies every call chain and helps group log messages to investigate them. The logging agent shall include a correlation ID in every log message."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q109",
+    "type": "comparative",
+    "category": "ai_security",
+    "answerable": true,
+    "question": "Our agent uses several MCP tool servers. Why should we consider MCP-specific security alongside general AI agent security?",
+    "answer": "The AI Agent Security sheet addresses the architecture and attack surfaces of agents that reason, plan, use tools, retain memory, and act. The MCP sheet describes an additional attack surface where agents dynamically choose tools and parameters through natural language, combining prompt injection, supply-chain, and confused-deputy risks. It covers MCP clients, servers, and their connections. An MCP deployment therefore needs consideration of that deployment-specific surface alongside general agent architecture security.",
+    "source_file": "AI_Agent_Security_Cheat_Sheet.md",
+    "source_section": "Introduction",
+    "source_passage": "AI agents are autonomous systems powered by Large Language Models (LLMs) that can reason, plan, use tools, maintain memory, and take actions to accomplish goals. This expanded capability introduces unique security risks beyond traditional LLM prompt injection. This cheat sheet provides best practices to secure AI agent architectures and minimize attack surfaces.",
+    "extra_sources": [
+      {
+        "source_file": "MCP_Security_Cheat_Sheet.md",
+        "source_section": "Introduction",
+        "source_passage": "However, MCP introduces a fundamentally new attack surface: AI agents dynamically executing tools based on natural language, with access to sensitive systems. Unlike traditional APIs where developers control every call, MCP lets LLMs decide which tools to invoke, when, and with what parameters. This is creating unique security risks that combine prompt injection, supply chain attacks, and confused deputy problems.\n\nThis cheat sheet provides best practices to secure MCP deployments and minimize attack surfaces across clients, servers, and the connections between them."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Removed detailed controls and named attacks unsupported by the introductions; clarified complementary scope without implying every recommendation applies to every deployment."
+  },
+  {
+    "id": "q110",
+    "type": "procedural",
+    "category": "ai_security",
+    "answerable": true,
+    "question": "A human approved a high-impact tool call my agent wants to make - what should the execution layer actually verify before letting that call run, step by step?",
+    "answer": "Don't just check a user_confirmed flag. The execution component, outside the agent's own context, must: verify the approval belongs to this specific actor and this exact tool call; verify it is still valid and hasn't already been used; and check-and-consume the approval in one atomic step immediately before execution, so a concurrent or repeated request can't reuse it. Any change to the target or parameters invalidates that approval and requires a new one, and the system should fail closed for unknown tools or missing approval requirements.",
+    "source_file": "AI_Agent_Security_Cheat_Sheet.md",
+    "source_section": "Best Practices > 1. Tool Security & Least Privilege > Tool Authorization Middleware",
+    "source_passage": "Enforce authorization in the execution component, outside the agent's context. A `user_confirmed` flag is insufficient: the component must verify that the approval belongs to the current actor and exact tool call, remains valid, and has not already been consumed. Check and consume the approval in one atomic step immediately before execution so concurrent or repeated requests cannot reuse it. Changes to the target or parameters require new approval. Apply the [High-Impact Action Integrity Controls](#high-impact-action-integrity-controls) and the [Transaction Authorization Cheat Sheet](Transaction_Authorization_Cheat_Sheet.md). Fail closed for unknown tools or missing approval requirements.",
+    "extra_sources": [],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1"
+  },
+  {
+    "id": "q112",
+    "type": "multi_sheet",
+    "category": "ai_security",
+    "answerable": true,
+    "question": "Our CI review-bot agent reads PR titles, bodies, and diffs, and we want an audit log of what it did - what should actually go into that log entry, and what has to stay out of it?",
+    "answer": "Log the CI agent's action metadata - correlation identifiers, authorization decisions, and outcomes - and watch for unexpected file modifications, network calls, or secret-access patterns. But exclude secrets and sensitive prompt, tool-argument, and response content from the log, following the Logging cheat sheet's exclusion rules, which specifically call out things like access tokens, authentication passwords, and sensitive personal data as items that must be removed, masked, hashed, or encrypted rather than written directly into log entries.",
+    "source_file": "Secure_Coding_with_AI_Cheat_Sheet.md",
+    "source_section": "Section 11: CI/CD Agents and Confused Deputy Risk > Do",
+    "source_passage": "Log CI agent action metadata, correlation identifiers, authorization decisions, and outcomes. Exclude secrets and sensitive prompt, tool-argument, and response content; apply the [Logging Cheat Sheet](Logging_Cheat_Sheet.md#data-to-exclude). Monitor for unexpected file modifications, network calls, or secret access patterns.",
+    "extra_sources": [
+      {
+        "source_file": "Logging_Cheat_Sheet.md",
+        "source_section": "Design, implementation, and testing > Data to exclude",
+        "source_passage": "The following should usually not be recorded directly in the logs, but instead should be removed, masked, sanitized, hashed, or encrypted:\n\n- Application source code\n- Session identification values (consider replacing with a hashed value if needed to track session specific events)\n- Access tokens\n- Sensitive personal data and some forms of personally identifiable information (PII) e.g. health, government identifiers, vulnerable people\n- Authentication passwords\n- Database connection strings\n- Encryption keys and other primary secrets\n- Bank account or payment card holder data\n- Data of a higher security classification than the logging system is allowed to store\n- Commercially-sensitive information\n- Information it is illegal to collect in the relevant jurisdictions\n- Information a user has opted out of collection, or not consented to e.g. use of do not track, or where consent to collect has expired"
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Expanded the Logging evidence to include the introductory removal/masking/sanitization/hashing/encryption rule supporting the answer, rather than citing only examples."
+  },
+  {
+    "id": "q117",
+    "type": "factual",
+    "category": "other",
+    "answerable": true,
+    "question": "For a free-text 'additional comments' box on a form, should I just restrict it to letters, digits, and basic punctuation to be safe from injection?",
+    "answer": "No. The sheet says free-form comments can allow broad Unicode text with length limits rather than restricting users to letters and digits. Define the field's acceptance rules instead of trying to recognize every malicious string. Blocking apostrophes rejects legitimate input without making database queries safe. Use parameterized queries for SQL injection prevention and context-aware output encoding for XSS prevention.",
+    "source_file": "Input_Validation_Cheat_Sheet.md",
+    "source_section": "Input Validation Strategies > Allowlist vs Denylist",
+    "source_passage": "Define what the application accepts and reject values outside those rules. Do not try to recognize every malicious string. Blocking apostrophes, for example, rejects legitimate names without making a database query safe. For free-form comments, an allowlist can permit broad Unicode text while limiting its length; it need not restrict users to letters and digits.",
+    "extra_sources": [
+      {
+        "source_file": "Input_Validation_Cheat_Sheet.md",
+        "source_section": "Input Validation Cheat Sheet > Introduction",
+        "source_passage": "- Use [parameterized queries](SQL_Injection_Prevention_Cheat_Sheet.md) for SQL and [context-aware output encoding](Cross_Site_Scripting_Prevention_Cheat_Sheet.md#output-encoding) to prevent cross-site scripting (XSS).\n- Check [authorization](Authorization_Cheat_Sheet.md) separately: a valid account identifier does not mean the caller may access that account."
+      }
+    ],
+    "origin": "llm_draft",
+    "verified": true,
+    "reviewer": "reviewer_1",
+    "review_notes": "Added evidence for SQL parameterization and XSS output encoding; removed the implication that output encoding makes database queries safe or that length is the only possible validation rule."
+  }
+]
