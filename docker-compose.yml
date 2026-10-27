@@ -1,0 +1,18 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "6333:6333" # HTTP / REST API
+      - "6334:6334" # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ulimits:
+      # RocksDB opens a lot of file handles per collection/segment; the
+      # container's default (1024) runs out partway through recreating
+      # several collections in a row and fails with "Too many open files".
+      nofile:
+        soft: 65536
+        hard: 65536
+
+volumes:
+  qdrant_data:
