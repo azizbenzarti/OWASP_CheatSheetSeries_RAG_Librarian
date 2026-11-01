@@ -175,13 +175,14 @@ def _now() -> str:
 
 
 def _load_real_librarian() -> Any:
-    """Gemini by default (Librarian.from_config). GENERATOR=openai swaps in
-    OpenAIGenerator for deployments without a Gemini key; retrieval and the
-    reranker are wired exactly as Librarian.from_config does it."""
+    """OpenAI (OpenAIGenerator) by default: with our Gemini key, Gemini took
+    100-300s per answer vs ~3s for gpt-4o-mini. GENERATOR=gemini uses the
+    original Librarian.from_config() instead. Retrieval and the reranker are
+    wired exactly as Librarian.from_config does it."""
     from ..generation import Librarian
 
     rerank = os.environ.get("LIBRARIAN_RERANK", "1") != "0"
-    if os.environ.get("GENERATOR", "gemini").lower() != "openai":
+    if os.environ.get("GENERATOR", "openai").lower() == "gemini":
         return Librarian.from_config(rerank=rerank)
 
     from ..retrieval.retriever import Retriever

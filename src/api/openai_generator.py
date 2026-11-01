@@ -1,8 +1,8 @@
 """
-Optional OpenAI answer generator for the API, for deployments without a
-Gemini key. Opt-in with GENERATOR=openai; the default stays Gemini
-(src/generation/gemini.py), which is what docs/design.md and the eval
-numbers describe.
+OpenAI answer generator: the API's default (GENERATOR=openai, or unset).
+GENERATOR=gemini switches back to src/generation/gemini.py, which is what
+the earlier eval numbers in docs/ were measured with. Switched because
+Gemini took 100-300s per answer with our key, vs ~3s for gpt-4o-mini.
 
 It is a drop-in for GeminiGenerator: a callable (system_prompt, user_prompt)
 -> raw model text, using the same SYSTEM_PROMPT and the same JSON schema

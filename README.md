@@ -17,7 +17,7 @@ at `docs/architecture.svg`.
 
 ## Service
 
-**Setup (once):** `cp .env.example .env`, then fill in `EMBEDDING_API_KEY`, `EMBEDDING_MODEL=text-embedding-3-small` and `GEMINI_API_KEY`.
+**Setup (once):** `cp .env.example .env`, then fill in `EMBEDDING_API_KEY` (an OpenAI key) and `EMBEDDING_MODEL=text-embedding-3-small`. That one key covers both embeddings and answers: the service generates with OpenAI `gpt-4o-mini` by default (`src/api/openai_generator.py`, same prompt, JSON schema and citation/refusal rules as the Gemini path below). `GENERATOR=gemini` + `GEMINI_API_KEY` switches back to Gemini, which took 100-300 s per answer with our key.
 
 **Run:**
 
