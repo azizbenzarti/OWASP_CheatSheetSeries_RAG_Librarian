@@ -79,9 +79,9 @@ class Ask(ApiTestCase):
         self.assertEqual(self.client.post("/ask", json={"question": "x" * 1000}).status_code, 200)
         self.assertEqual(len(self.librarian.calls), 1)  # invalid requests never reach the Librarian
 
-    def test_backend_error_is_clean_503(self):
+    def test_backend_error_is_clean_502(self):
         r = self.client.post("/ask", json={"question": "boom"})
-        self.assertEqual(r.status_code, 503)
+        self.assertEqual(r.status_code, 502)
         self.assertNotIn("internal-host", r.text)
         self.assertNotIn("secret", r.text)
         self.assertNotIn("ConnectionError", r.text)
@@ -98,6 +98,14 @@ class Ask(ApiTestCase):
 
 
 class HealthAndLogs(ApiTestCase):
+    def test_health_qdrant_out_of_sync(self):
+        client = TestClient(create_app(lambda: self.librarian, log_dir=self.log_dir,
+                                       health_check=lambda lib: "out of sync: 1 points, 2 chunks"))
+        with client:
+            r = client.get("/health")
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual((r.json()["status"], r.json()["qdrant"]), ("unavailable", "out of sync: 1 points, 2 chunks"))
+
     def test_health(self):
         r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)

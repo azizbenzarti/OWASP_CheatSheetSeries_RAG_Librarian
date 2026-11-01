@@ -29,7 +29,7 @@ Then open the UI at <http://localhost:8501> (API at <http://localhost:8000>, int
 
 Endpoints (`POST /ask`, `POST /feedback`, `GET /stats`, `GET /health`) are described in [HTTP API](#http-api) below, and the three-pane UI in [UI](#ui).
 
-Qdrant, OpenAI or Gemini failures return a plain `503` without internal details. Every request and feedback is appended to `data/logs/requests.jsonl` / `feedback.jsonl` (bind-mounted, gitignored), and `/stats` is computed from those files. Code: `src/api/main.py`, `src/ui/app.py`, `Dockerfile`, `scripts/docker-entrypoint.sh`. Offline tests (no keys): `python -m unittest tests.test_api tests.test_ui -v`.
+Qdrant, OpenAI or Gemini failures return a plain `502` without internal details. Every request and feedback is appended to `data/logs/requests.jsonl` / `feedback.jsonl` (bind-mounted, gitignored), and `/stats` is computed from those files. Code: `src/api/main.py`, `src/ui/app.py`, `Dockerfile`, `scripts/docker-entrypoint.sh`. Offline tests (no keys): `python -m unittest tests.test_api tests.test_ui -v`.
 
 ## Corpus
 
@@ -214,7 +214,7 @@ curl -s localhost:8000/health
 curl -s -X POST localhost:8000/ask -H 'content-type: application/json'   -d '{"question": "how should I store passwords?"}'
 ```
 
-Status codes: `422` bad input (checked before any retrieval or API call), `503` the Librarian isn't loaded or an upstream call (OpenAI, Qdrant, Gemini) failed; the error class is logged server-side, never echoed to the client. Every request is appended to `data/logs/requests.jsonl`.
+Status codes: `422` bad input (checked before any retrieval or API call), `502` an upstream call (OpenAI, Qdrant, Gemini) failed, `503` the Librarian isn't loaded (the app still starts so `/health` can say why). The error class is logged server-side, never echoed to the client. Options in `.env`: `GENERATOR`, `LIBRARIAN_RERANK=false`, `LIBRARIAN_INDEX_DIR`, `LOG_DIR`. Every request is appended to `data/logs/requests.jsonl`.
 
 ```bash
 python -m unittest tests.test_api -v     # offline: fake Librarian, no keys or Qdrant
