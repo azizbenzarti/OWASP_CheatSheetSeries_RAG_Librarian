@@ -14,5 +14,48 @@ services:
         soft: 65536
         hard: 65536
 
+  # FastAPI over the Librarian (src/api/main.py). On first start the
+  # entrypoint fetches the corpus and builds the index if it's missing.
+  api:
+    build: .
+    image: owasp-librarian:latest
+    env_file: .env # secrets live only here, never in the image
+    environment:
+      QDRANT_URL: http://qdrant:6333 # overrides .env's localhost value inside the network
+      ENSURE_INDEX: "1"
+    depends_on:
+      - qdrant
+    ports:
+      - "8000:8000"
+    volumes:
+      - index_data:/app/data/index
+      - embedding_cache:/app/data/cache
+      - corpus_data:/app/corpus
+      - ./data/logs:/app/data/logs # requests.jsonl / feedback.jsonl, readable on the host
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 600s # first start builds the index
+    restart: unless-stopped
+
+  # Streamlit UI (ui/app.py): talks to the API over HTTP, holds no keys.
+  ui:
+    build: . # same Dockerfile and tag as api; the second build is all cache hits
+    image: owasp-librarian:latest
+    command: ["streamlit", "run", "ui/app.py", "--server.port=8501", "--server.address=0.0.0.0",
+              "--server.headless=true", "--browser.gatherUsageStats=false"]
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
+  index_data:
+  embedding_cache:
+  corpus_data:

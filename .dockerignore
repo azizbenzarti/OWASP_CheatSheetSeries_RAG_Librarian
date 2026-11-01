@@ -1,0 +1,14 @@
+# Secrets and local state never go into the image.
+.env
+.env.*
+!.env.example
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+corpus/
+data/index/
+data/cache/
+data/logs/
+docs/*.pdf

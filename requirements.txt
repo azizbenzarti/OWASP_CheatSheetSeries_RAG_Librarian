@@ -21,3 +21,10 @@ sentence-transformers==6.2.0
 # Answer generation (Step 5, src/generation/): Gemini writes the answer;
 # embeddings above stay on the OpenAI API.
 google-genai==2.34.0
+
+# Service (src/api/, ui/): FastAPI + uvicorn for the API, Streamlit for the
+# UI. httpx is the UI's HTTP client and FastAPI's TestClient (tests/test_api.py).
+fastapi==0.115.6
+uvicorn==0.34.0
+streamlit==1.41.1
+httpx>=0.27

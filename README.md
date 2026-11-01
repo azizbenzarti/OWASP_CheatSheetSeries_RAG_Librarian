@@ -15,6 +15,31 @@ Runs via Docker Compose (Streamlit, FastAPI, Qdrant) — no Kubernetes. See
 `docs/design.md` for the reasoning behind each piece; an editable source is
 at `docs/architecture.svg`.
 
+## Service
+
+**Setup (once):** `cp .env.example .env`, then fill in `EMBEDDING_API_KEY`, `EMBEDDING_MODEL=text-embedding-3-small` and `GEMINI_API_KEY`.
+
+**Run:**
+
+```bash
+docker compose up --build
+```
+
+Then open the UI at <http://localhost:8501> (API at <http://localhost:8000>, interactive docs at `/docs`). On the very first start the `api` container fetches the pinned corpus and builds the index (`heading` / 512 / overlap 0 / min 20) into Docker volumes, which takes a few minutes and about $0.02 of embeddings. Later starts reuse it. Keys are read from `.env` at run time (`env_file`); they are never copied into the image.
+
+| endpoint | what |
+|---|---|
+| `POST /ask` `{"question": str (1-1000 chars), "top_k": int = 5 (1-10)}` | `answer` with `[n]` markers, `citations` (`number`, `title`, `section_path`, `source_url` …), `answerable`, `refusal_reason`, `timings_ms`, `request_id`, `latency_ms` |
+| `POST /feedback` `{"request_id": str, "helpful": bool, "comment"?: str}` | records a thumbs up/down for a previous answer |
+| `GET /stats` | request count, p50/p95 latency, refusal rate and reasons, feedback counts |
+| `GET /health` | `200` once the index and models are loaded, `503` while loading or if loading failed |
+
+```bash
+curl -s localhost:8000/ask -H 'content-type: application/json' -d '{"question": "how should I store passwords?"}'
+```
+
+Qdrant, OpenAI or Gemini failures return a plain `503` without internal details. Every request and feedback is appended to `data/logs/requests.jsonl` / `feedback.jsonl` (bind-mounted, gitignored), and `/stats` is computed from those files. Code: `src/api/main.py`, `ui/app.py`, `Dockerfile`, `scripts/docker-entrypoint.sh`. Offline tests (fake Librarian, no keys): `python -m unittest tests.test_api -v`.
+
 ## Corpus
 
 [OWASP Cheat Sheet Series](https://github.com/OWASP/CheatSheetSeries),
@@ -41,7 +66,7 @@ Embeddings come from a hosted API (not a local model); the vector index is
 stays local, in Python. See `docs/design.md` ("Index choice") for why.
 
 ```bash
-docker compose up -d              # starts Qdrant on localhost:6333
+docker compose up -d qdrant       # starts only Qdrant on localhost:6333
 cp .env.example .env              # then fill in EMBEDDING_API_KEY and EMBEDDING_MODEL
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -155,7 +180,7 @@ Prerequisites: the offline index already built on your machine (`data/index/head
    python -m src.generation --smoke
    ```
 
-5. Full pipeline (Qdrant up via `docker compose up -d`; one OpenAI embedding call + one Gemini call per question):
+5. Full pipeline (Qdrant up via `docker compose up -d qdrant`; one OpenAI embedding call + one Gemini call per question):
 
    ```bash
    python -m src.generation "how should I store passwords?"            # hybrid + rerank (default)
@@ -166,4 +191,4 @@ Prerequisites: the offline index already built on your machine (`data/index/head
 
 Troubleshooting: `GEMINI_API_KEY is not set` -> step 2. Gemini `404` -> `GEMINI_MODEL` names a model your key can't use; unset it. `429` -> free-tier rate limit, wait and retry. `has no chunks.jsonl` / `Qdrant collection ... is not available` -> the existing index or Qdrant isn't there (same errors as `python -m src.retrieval`).
 
-Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness), then FastAPI/Streamlit on top of `Librarian`.
+Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness).

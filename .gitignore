@@ -6,3 +6,5 @@ venv/
 .env
 data/index/
 data/cache/
+data/logs/*
+!data/logs/.gitkeep
