@@ -98,3 +98,72 @@ python -m src.retrieval "how should I store passwords?" --context
 python eval/retrieval_eval.py            # dev-set ablation: bm25 / vector / hybrid / hybrid+rerank + score calibration
 python -m unittest tests.test_retriever  # offline unit tests (no Qdrant / API key)
 ```
+
+## Answer generation
+
+`src/generation/` turns retrieved chunks into a cited answer with Google Gemini (embeddings stay on OpenAI). It reuses the `Retriever` above unchanged: hybrid retrieval, cross-encoder rerank of the top 20, top 5 chunks numbered `[1]`…`[5]` by `format_context`, then one Gemini call that must answer only from those sources and return JSON `{"answerable": bool, "answer": str}`.
+
+```python
+from src.generation import ask
+
+result = ask("how should I store passwords?")
+print(result.format())        # answer with [n] citations + the cited OWASP URLs
+result.answerable             # False -> result.answer is the fixed "I don't know" text
+result.refusal_reason         # why: no_results / model_declined / no_valid_citations / invalid_model_output ...
+result.citations              # Source(number, title, section_path, source_file, source_url, chunk_id) per cited [n]
+```
+
+"I don't know" happens at four points, each recorded in `result.refusal_reason`:
+
+| reason | when | Gemini called? |
+|---|---|---|
+| `empty_query` / `no_results` / `below_vector_score_threshold` | retrieval returned nothing | no (free) |
+| `model_declined` | Gemini says the sources don't answer the question (the primary mechanism, per `docs/design.md`'s "I don't know" threshold section) | yes |
+| `no_valid_citations` | Gemini answered but cited no real source (citations to numbers it wasn't given are stripped; an answer left with none can't be checked, so it is refused) | yes |
+| `invalid_model_output` | output blocked, empty, or not the requested JSON | yes |
+
+Files: `src/generation/prompt.py` (system prompt + JSON schema), `gemini.py` (client, retries on 429/5xx), `answer.py` (citation check, refusal rules, `answer_question()`, `Librarian`, `ask()`, CLI), `tests/test_generation.py`.
+
+### Running it (teammates: start here)
+
+Prerequisites: the offline index already built on your machine (`data/index/heading_mt512_min20/` with `chunks.jsonl`, `bm25/`, `manifest.json`) and its Qdrant volume. **Nothing below rebuilds the index or re-embeds the corpus.**
+
+1. Pull and install the one new dependency (`google-genai`, now in `requirements.txt`):
+
+   ```bash
+   git pull
+   source .venv/bin/activate            # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   ```
+
+2. Add the Gemini key to your existing `.env` (copy the new lines from `.env.example`). Get a key at <https://aistudio.google.com/apikey>. Keep the existing OpenAI `EMBEDDING_API_KEY` / `EMBEDDING_MODEL=text-embedding-3-small` unchanged: questions are still embedded with OpenAI; Gemini only writes the answer.
+
+   ```bash
+   GEMINI_API_KEY=your-key-here
+   # GEMINI_MODEL=   optional, default gemini-flash-latest; pin an exact id for reproducible eval runs
+   ```
+
+3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK`:
+
+   ```bash
+   python -m unittest tests.test_generation tests.test_retriever -v
+   ```
+
+4. Gemini alone: 2 real Gemini calls on two built-in Password Storage excerpts, no Qdrant/OpenAI needed. Expect the Argon2id question answered with `[1]` + an OWASP link, and the Android TLS question answered "I don't know" with `refusal_reason: model_declined`:
+
+   ```bash
+   python -m src.generation --smoke
+   ```
+
+5. Full pipeline (Qdrant up via `docker compose up -d`; one OpenAI embedding call + one Gemini call per question):
+
+   ```bash
+   python -m src.generation "how should I store passwords?"            # hybrid + rerank (default)
+   python -m src.generation "how should I store passwords?" --no-rerank  # skip the cross-encoder
+   python -m src.generation "how do I bake sourdough bread?"           # should say "I don't know"
+   python -m src.generation "how should I store passwords?" --json     # every field, incl. timings
+   ```
+
+Troubleshooting: `GEMINI_API_KEY is not set` -> step 2. Gemini `404` -> `GEMINI_MODEL` names a model your key can't use; unset it. `429` -> free-tier rate limit, wait and retry. `has no chunks.jsonl` / `Qdrant collection ... is not available` -> the existing index or Qdrant isn't there (same errors as `python -m src.retrieval`).
+
+Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness), then FastAPI/Streamlit on top of `Librarian`.

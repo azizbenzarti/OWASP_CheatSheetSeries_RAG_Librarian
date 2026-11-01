@@ -17,3 +17,7 @@ qdrant-client==1.12.2
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.15.0+cpu
 sentence-transformers==6.2.0
+
+# Answer generation (Step 5, src/generation/): Gemini writes the answer;
+# embeddings above stay on the OpenAI API.
+google-genai==2.34.0
