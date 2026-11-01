@@ -6,3 +6,4 @@ venv/
 .env
 data/index/
 data/cache/
+data/feedback/

@@ -67,10 +67,11 @@ class Source:
     source_file: str
     source_url: str
     chunk_id: str
+    text: str = ""  # the passage itself, so a UI can show exactly what the model was given
 
     @classmethod
     def from_chunk(cls, number: int, chunk: RetrievedChunk) -> "Source":
-        return cls(number, chunk.title, chunk.section_path, chunk.source_file, chunk.source_url, chunk.chunk_id)
+        return cls(number, chunk.title, chunk.section_path, chunk.source_file, chunk.source_url, chunk.chunk_id, chunk.text)
 
 
 @dataclass

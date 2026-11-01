@@ -1,0 +1,4 @@
+# Streamlit UI (src/ui/, docker/ui.Dockerfile). Only talks to the API over
+# HTTP, so it needs none of the pipeline's dependencies.
+streamlit==1.66.1
+httpx==0.28.1

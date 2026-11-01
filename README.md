@@ -143,7 +143,7 @@ Prerequisites: the offline index already built on your machine (`data/index/head
    # GEMINI_MODEL=   optional, default gemini-flash-latest; pin an exact id for reproducible eval runs
    ```
 
-3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK` (44 with `tests.test_api` added):
+3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK` (58 with `tests.test_api tests.test_ui` added, which need `requirements-ui.txt` too):
 
    ```bash
    python -m unittest tests.test_generation tests.test_retriever -v
@@ -179,6 +179,7 @@ python -m src.api                        # http://127.0.0.1:8000, interactive do
 | endpoint | does |
 |---|---|
 | `POST /ask` | body `{"question": str, "top_k": int = 5}` (question 1-1000 chars, top_k 1-10). Returns the `Answer` fields: `answer`, `answerable`, `refusal_reason`, `citations`, `sources`, `invalid_citations`, `model`, `timings_ms`. An "I don't know" is a normal `200` with `answerable: false`. |
+| `POST /feedback` | body `{question, answer, answerable, refusal_reason, cited_chunk_ids, model, rating: "up"\|"down", comment}`, appended as one line to `data/feedback/feedback.jsonl` (gitignored). Returns `204`. Stores what was asked and answered, never who asked (no IP, no user id). Works even if the index failed to load. |
 | `GET /health` | `200` when the index is loaded and Qdrant still holds one point per chunk; `503` otherwise, with the reason in `error` or `qdrant`. |
 
 ```bash
@@ -195,4 +196,26 @@ Options in `.env`: `LIBRARIAN_RERANK=false` skips the cross-encoder (no torch ne
 python -m unittest tests.test_api -v     # offline: fake retriever + fake Gemini, no keys or Qdrant
 ```
 
-Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness), the Streamlit UI on top of the API, and API/UI services in `docker-compose.yml`.
+## UI
+
+`src/ui/app.py` is a Streamlit page that talks to the API over HTTP only (`API_URL`), so it needs no index, no torch and no keys.
+
+```bash
+pip install -r requirements-ui.txt                          # streamlit, httpx
+python -m src.api                                           # terminal 1: the API
+API_URL=http://127.0.0.1:8000 streamlit run src/ui/app.py   # terminal 2: http://localhost:8501
+```
+
+A three-pane console:
+
+- **Left:** this session's questions (unanswered ones in amber), index status, and how many passages are sent to the model.
+- **Middle:** the question, the answer with numbered `[n]` citations, per-stage timings (vector, bm25, rerank, generation, total) and how many of the passages given were cited, then Helpful / Not helpful (with an optional comment) sent to `POST /feedback`.
+- **Right:** one tab per cited source showing the passage exactly as the model received it, with line numbers. Lines that share specific terms or values with the sentences citing that source are highlighted, as a reading aid. For "I don't know" answers it shows the passages that were searched instead.
+
+Model output and passage text are HTML-escaped before rendering (the corpus is full of example attack payloads). The API returns each source's passage `text` for this pane. Theme in `.streamlit/config.toml` (read when Streamlit runs from the repo root).
+
+```bash
+python -m unittest tests.test_ui -v     # offline: API calls mocked
+```
+
+Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness), and API/UI services in `docker-compose.yml`.

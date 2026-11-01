@@ -1,0 +1,13 @@
+# Theme for src/ui/app.py (read when streamlit runs from the repo root).
+[theme]
+base = "dark"
+primaryColor = "#4FD1C5"
+backgroundColor = "#1A1D23"
+secondaryBackgroundColor = "#21252D"
+textColor = "#DCE1EA"
+
+[client]
+toolbarMode = "minimal"   # no Deploy button or developer menu
+
+[browser]
+gatherUsageStats = false

@@ -4,6 +4,8 @@ Librarian, which is reused as-is.
 
     POST /ask     {"question": "...", "top_k": 5} -> cited answer (or "I don't know")
     GET  /health  is the index loaded, and does Qdrant still hold it?
+    POST /feedback  thumbs up/down (+ optional comment) on an answer, appended
+                    to data/feedback/feedback.jsonl
 
 The Librarian (chunks, BM25, Qdrant client, reranker, Gemini client) is
 built ONCE at startup, in the lifespan hook, and shared by every request.
@@ -17,6 +19,7 @@ container healthcheck reports the real problem instead of a crash loop.
 Environment (on top of the .env the Librarian already reads):
     LIBRARIAN_RERANK     "true" (default) or "false": cross-encoder rerank
     LIBRARIAN_INDEX_DIR  optional: a different built index directory
+    LIBRARIAN_FEEDBACK_PATH  optional: where feedback is appended
 
 Run:  uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 """
@@ -25,12 +28,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -40,6 +45,8 @@ logger = logging.getLogger("librarian.api")
 
 MAX_QUESTION_CHARS = 1000  # long enough for any real question; caps prompt size and cost per request
 MAX_TOP_K = 10
+MAX_COMMENT_CHARS = 1000
+DEFAULT_FEEDBACK_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "feedback" / "feedback.jsonl"
 
 
 # --------------------------------------------------------------------- #
@@ -67,6 +74,7 @@ class SourceOut(BaseModel):
     source_file: str
     source_url: str
     chunk_id: str
+    text: str = ""  # passage text given to the model
 
 
 class AskResponse(BaseModel):
@@ -79,6 +87,20 @@ class AskResponse(BaseModel):
     invalid_citations: list[int]
     model: str | None
     timings_ms: dict[str, float]
+
+
+class FeedbackRequest(BaseModel):
+    """One thumbs up/down on an answer. Stores what was asked and answered,
+    never who asked it (no IP, no user id): the brief allows no personal data."""
+
+    question: str = Field(..., min_length=1, max_length=MAX_QUESTION_CHARS)
+    answer: str = Field(..., max_length=20_000)
+    answerable: bool
+    refusal_reason: str | None = Field(None, max_length=64)
+    cited_chunk_ids: list[str] = Field(default_factory=list, max_length=MAX_TOP_K)
+    model: str | None = Field(None, max_length=128)
+    rating: Literal["up", "down"]
+    comment: str = Field("", max_length=MAX_COMMENT_CHARS)
 
 
 class HealthResponse(BaseModel):
@@ -141,9 +163,16 @@ def _default_loader() -> tuple[Librarian, HealthCheck]:
 # --------------------------------------------------------------------- #
 
 
-def create_app(loader: Callable[[], tuple[Librarian, HealthCheck]] = _default_loader) -> FastAPI:
+def create_app(
+    loader: Callable[[], tuple[Librarian, HealthCheck]] = _default_loader,
+    feedback_path: Path | str | None = None,
+) -> FastAPI:
     """`loader` builds the Librarian and its health check at startup. Tests
-    pass one that returns a Librarian over a fake retriever and fake Gemini."""
+    pass one that returns a Librarian over a fake retriever and fake Gemini.
+    `feedback_path` is the JSONL file POST /feedback appends to (default:
+    LIBRARIAN_FEEDBACK_PATH, else data/feedback/feedback.jsonl)."""
+    feedback_file = Path(feedback_path or os.environ.get("LIBRARIAN_FEEDBACK_PATH") or DEFAULT_FEEDBACK_PATH)
+    feedback_lock = threading.Lock()  # sync endpoints run in a threadpool: one writer at a time
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -206,6 +235,20 @@ def create_app(loader: Callable[[], tuple[Librarian, HealthCheck]] = _default_lo
             logger.exception("ask failed")
             raise HTTPException(502, "Answer generation failed upstream; try again shortly.")
         return result.to_dict()
+
+    # Works even when the Librarian failed to load: feedback doesn't need the index.
+    @app.post("/feedback", status_code=204)
+    def feedback(body: FeedbackRequest) -> Response:
+        record = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), **body.model_dump()}
+        try:
+            with feedback_lock:
+                feedback_file.parent.mkdir(parents=True, exist_ok=True)
+                with feedback_file.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            logger.exception("could not write feedback to %s", feedback_file)
+            raise HTTPException(500, "Feedback could not be saved.")
+        return Response(status_code=204)
 
     return app
 
