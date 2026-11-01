@@ -143,7 +143,7 @@ Prerequisites: the offline index already built on your machine (`data/index/head
    # GEMINI_MODEL=   optional, default gemini-flash-latest; pin an exact id for reproducible eval runs
    ```
 
-3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK`:
+3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK` (44 with `tests.test_api` added):
 
    ```bash
    python -m unittest tests.test_generation tests.test_retriever -v
@@ -166,4 +166,33 @@ Prerequisites: the offline index already built on your machine (`data/index/head
 
 Troubleshooting: `GEMINI_API_KEY is not set` -> step 2. Gemini `404` -> `GEMINI_MODEL` names a model your key can't use; unset it. `429` -> free-tier rate limit, wait and retry. `has no chunks.jsonl` / `Qdrant collection ... is not available` -> the existing index or Qdrant isn't there (same errors as `python -m src.retrieval`).
 
-Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness), then FastAPI/Streamlit on top of `Librarian`.
+## HTTP API
+
+`src/api/` serves the `Librarian` above over HTTP with FastAPI. It loads the index, reranker and Gemini client once at startup and reuses them for every request; it never rebuilds the index. Same prerequisites as the full pipeline: the built index, Qdrant up, and `.env` filled in.
+
+```bash
+pip install -r requirements.txt          # adds fastapi, uvicorn, httpx
+python -m src.api                        # http://127.0.0.1:8000, interactive docs at /docs
+# or: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+```
+
+| endpoint | does |
+|---|---|
+| `POST /ask` | body `{"question": str, "top_k": int = 5}` (question 1-1000 chars, top_k 1-10). Returns the `Answer` fields: `answer`, `answerable`, `refusal_reason`, `citations`, `sources`, `invalid_citations`, `model`, `timings_ms`. An "I don't know" is a normal `200` with `answerable: false`. |
+| `GET /health` | `200` when the index is loaded and Qdrant still holds one point per chunk; `503` otherwise, with the reason in `error` or `qdrant`. |
+
+```bash
+curl -s localhost:8000/health
+curl -s -X POST localhost:8000/ask -H 'content-type: application/json' \
+  -d '{"question": "how should I store passwords?"}'
+```
+
+Status codes: `422` bad input (checked before any retrieval or API call), `502` an upstream call failed (OpenAI, Qdrant or Gemini; logged server-side, not echoed to the client), `503` the Librarian failed to load at startup (the app still starts so `/health` can say why).
+
+Options in `.env`: `LIBRARIAN_RERANK=false` skips the cross-encoder (no torch needed, faster, lower recall@5), `LIBRARIAN_INDEX_DIR` points at a different built index.
+
+```bash
+python -m unittest tests.test_api -v     # offline: fake retriever + fake Gemini, no keys or Qdrant
+```
+
+Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness), the Streamlit UI on top of the API, and API/UI services in `docker-compose.yml`.

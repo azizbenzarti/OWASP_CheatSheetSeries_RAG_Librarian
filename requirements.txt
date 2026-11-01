@@ -21,3 +21,9 @@ sentence-transformers==6.2.0
 # Answer generation (Step 5, src/generation/): Gemini writes the answer;
 # embeddings above stay on the OpenAI API.
 google-genai==2.34.0
+
+# HTTP API (src/api/): FastAPI over the Librarian above. httpx is what
+# FastAPI's TestClient uses in tests/test_api.py.
+fastapi==0.162.0
+uvicorn==0.54.0
+httpx==0.28.1
