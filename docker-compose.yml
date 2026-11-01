@@ -40,11 +40,11 @@ services:
       start_period: 600s # first start builds the index
     restart: unless-stopped
 
-  # Streamlit UI (ui/app.py): talks to the API over HTTP, holds no keys.
+  # Streamlit UI (src/ui/app.py): talks to the API over HTTP, holds no keys.
   ui:
     build: . # same Dockerfile and tag as api; the second build is all cache hits
     image: owasp-librarian:latest
-    command: ["streamlit", "run", "ui/app.py", "--server.port=8501", "--server.address=0.0.0.0",
+    command: ["streamlit", "run", "src/ui/app.py", "--server.port=8501", "--server.address=0.0.0.0",
               "--server.headless=true", "--browser.gatherUsageStats=false"]
     environment:
       API_URL: http://api:8000

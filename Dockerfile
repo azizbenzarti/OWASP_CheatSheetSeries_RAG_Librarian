@@ -17,8 +17,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements.txt requirements-ui.txt ./
+RUN pip install -r requirements.txt -r requirements-ui.txt
 
 # Bake the reranker weights into the image so containers start without
 # downloading from Hugging Face; HF_HUB_OFFLINE then forbids any download at

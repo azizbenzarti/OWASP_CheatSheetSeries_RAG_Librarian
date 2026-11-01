@@ -58,6 +58,7 @@ class Ask(ApiTestCase):
         self.assertEqual(body["answer"], "Use Argon2id [1].")
         self.assertEqual(body["citations"][0]["source_url"], URL)
         self.assertEqual(body["citations"][0]["number"], 1)
+        self.assertEqual(body["sources"][0]["chunk_id"], "c0")  # every source given, for the UI's source pane
         self.assertIsNone(body["refusal_reason"])
         self.assertEqual(len(body["request_id"]), 32)
         self.assertGreaterEqual(body["latency_ms"], 0)
@@ -90,7 +91,7 @@ class Ask(ApiTestCase):
             raise RuntimeError("GEMINI_API_KEY is not set")
         client = self.make_client(broken)
         self.assertEqual(client.get("/health").status_code, 503)
-        self.assertEqual(client.get("/health").json()["detail"]["reason"], "RuntimeError")
+        self.assertEqual(client.get("/health").json()["error"], "RuntimeError")
         r = client.post("/ask", json={"question": "hi"})
         self.assertEqual(r.status_code, 503)
         self.assertNotIn("GEMINI", r.text)
@@ -100,13 +101,14 @@ class HealthAndLogs(ApiTestCase):
     def test_health(self):
         r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json(), {"status": "ok", "model": "fake-model"})
+        body = r.json()
+        self.assertEqual((body["status"], body["model"], body["index_loaded"]), ("ok", "fake-model", True))
 
     def test_requests_and_feedback_logged(self):
         rid = self.client.post("/ask", json={"question": "passwords?"}).json()["request_id"]
         self.client.post("/ask", json={"question": "boom"})
         r = self.client.post("/feedback", json={"request_id": rid, "helpful": False, "comment": " wrong sheet "})
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 204)
 
         rows = [json.loads(l) for l in (self.log_dir / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual([r["status"] for r in rows], ["ok", "error"])
@@ -118,7 +120,18 @@ class HealthAndLogs(ApiTestCase):
 
     def test_feedback_validation(self):
         self.assertEqual(self.client.post("/feedback", json={"request_id": "nope", "helpful": True}).status_code, 404)
-        self.assertEqual(self.client.post("/feedback", json={"request_id": "x"}).status_code, 422)
+        self.assertEqual(self.client.post("/feedback", json={"request_id": "x"}).status_code, 422)  # no rating
+        self.assertEqual(self.client.post("/feedback", json={"rating": "meh"}).status_code, 422)
+
+    def test_feedback_from_ui(self):
+        """The payload src/ui/app.py sends: rating + what was asked, request_id optional."""
+        r = self.client.post("/feedback", json={
+            "question": "q", "answer": "a [1]", "answerable": True, "refusal_reason": None,
+            "cited_chunk_ids": ["c0"], "model": "m", "rating": "down", "comment": "", "request_id": None})
+        self.assertEqual(r.status_code, 204)
+        [fb] = [json.loads(l) for l in (self.log_dir / "feedback.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual((fb["helpful"], fb["cited_chunk_ids"], fb["comment"]), (False, ["c0"], None))
+        self.assertEqual(self.client.get("/stats").json()["feedback"]["not_helpful"], 1)
 
 
 class Stats(ApiTestCase):
@@ -144,7 +157,7 @@ class Stats(ApiTestCase):
         rid = self.client.post("/ask", json={"question": "passwords?"}).json()["request_id"]
         client = self.make_client(FakeLibrarian)  # new app, same log dir
         self.assertEqual(client.get("/stats").json()["requests"], 1)
-        self.assertEqual(client.post("/feedback", json={"request_id": rid, "helpful": True}).status_code, 200)
+        self.assertEqual(client.post("/feedback", json={"request_id": rid, "rating": "up"}).status_code, 204)
 
     def test_percentile(self):
         self.assertEqual(percentile([5, 1, 3, 2, 4], 50), 3)

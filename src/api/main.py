@@ -31,10 +31,11 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_LOG_DIR = ROOT / "data" / "logs"
@@ -70,6 +71,7 @@ class Citation(BaseModel):
     source_file: str
     source_url: str
     chunk_id: str
+    text: str = ""  # the passage exactly as the model received it (the UI's source pane)
 
 
 class AskResponse(BaseModel):
@@ -78,16 +80,37 @@ class AskResponse(BaseModel):
     answer: str
     answerable: bool
     refusal_reason: str | None
-    citations: list[Citation]
+    citations: list[Citation]  # the sources the answer cites
+    sources: list[Citation]  # every source given to the model
+    invalid_citations: list[int]
     model: str | None
     timings_ms: dict[str, float]
     latency_ms: float  # end to end inside the API, including what timings_ms doesn't cover
 
 
 class FeedbackRequest(BaseModel):
-    request_id: str = Field(..., min_length=1, max_length=64)
-    helpful: bool
+    """One thumbs up/down. Stores what was asked and answered, never who
+    asked (no IP, no user id). The UI sends `rating`; `helpful` is accepted
+    too. `request_id` links the vote to its line in requests.jsonl."""
+
+    rating: Literal["up", "down"] | None = None
+    helpful: bool | None = None
     comment: str | None = Field(None, max_length=2000)
+    request_id: str | None = Field(None, max_length=64)
+    question: str | None = Field(None, max_length=MAX_QUESTION_CHARS)
+    answer: str | None = Field(None, max_length=20000)
+    answerable: bool | None = None
+    refusal_reason: str | None = Field(None, max_length=64)
+    cited_chunk_ids: list[str] = Field(default_factory=list, max_length=MAX_TOP_K)
+    model: str | None = Field(None, max_length=100)
+
+    @model_validator(mode="after")
+    def one_rating(self) -> "FeedbackRequest":
+        if self.rating is None and self.helpful is None:
+            raise ValueError("give rating ('up' or 'down') or helpful (true/false)")
+        if self.helpful is None:
+            self.helpful = self.rating == "up"
+        return self
 
 
 # --------------------------------------------------------------------- #
@@ -181,7 +204,7 @@ def _load_real_librarian() -> Any:
     wired exactly as Librarian.from_config does it."""
     from ..generation import Librarian
 
-    rerank = os.environ.get("LIBRARIAN_RERANK", "1") != "0"
+    rerank = os.environ.get("LIBRARIAN_RERANK", "true").strip().lower() not in ("0", "false", "no", "off")
     if os.environ.get("GENERATOR", "openai").lower() == "gemini":
         return Librarian.from_config(rerank=rerank)
 
@@ -219,12 +242,20 @@ def create_app(
 
     app = FastAPI(title="The Librarian", description="Cited answers from the OWASP Cheat Sheet Series.", lifespan=lifespan)
 
+    # Flat body in both cases (the UI reads it even on 503). Qdrant's point
+    # count was checked against chunks.jsonl when the Retriever loaded.
     @app.get("/health")
     def health():
-        if state["librarian"] is None:
-            detail = {"status": "unavailable", "reason": state["load_error"] or "loading"}
-            raise HTTPException(status_code=503, detail=detail)
-        return {"status": "ok", "model": getattr(state["librarian"], "model", None)}
+        librarian = state["librarian"]
+        if librarian is None:
+            reason = state["load_error"] or "loading"
+            return JSONResponse({"status": "unavailable", "index_loaded": False, "error": reason}, status_code=503)
+        retriever = getattr(librarian, "retriever", None)
+        return {
+            "status": "ok", "index_loaded": True, "model": getattr(librarian, "model", None), "qdrant": "ok",
+            "chunks": len(getattr(retriever, "chunks", []) or []) or None,
+            "rerank": getattr(retriever, "reranker", None) is not None,
+        }
 
     # Plain `def` (not async): Librarian.ask blocks on network + CPU, so
     # FastAPI runs it in its threadpool instead of stalling the event loop.
@@ -248,6 +279,7 @@ def create_app(
 
         latency_ms = round((time.perf_counter() - t0) * 1000, 2)
         citations = [Citation(**vars(c)) for c in result.citations]
+        sources = [Citation(**vars(s)) for s in result.sources]
         events.log_request({
             **record, "status": "ok", "answerable": result.answerable, "refusal_reason": result.refusal_reason,
             "answer": result.answer, "cited_chunks": [c.chunk_id for c in citations],
@@ -256,17 +288,20 @@ def create_app(
         })
         return AskResponse(
             request_id=request_id, question=req.question, answer=result.answer, answerable=result.answerable,
-            refusal_reason=result.refusal_reason, citations=citations, model=result.model,
+            refusal_reason=result.refusal_reason, citations=citations, sources=sources,
+            invalid_citations=result.invalid_citations, model=result.model,
             timings_ms=result.timings_ms, latency_ms=latency_ms,
         )
 
-    @app.post("/feedback")
+    # Works even when the Librarian failed to load: feedback doesn't need the index.
+    @app.post("/feedback", status_code=204)
     def feedback(req: FeedbackRequest):
-        if req.request_id not in events.request_ids:
+        if req.request_id is not None and req.request_id not in events.request_ids:
             raise HTTPException(status_code=404, detail="unknown request_id")
-        events.log_feedback({"ts": _now(), "request_id": req.request_id, "helpful": req.helpful,
-                             "comment": (req.comment or "").strip() or None})
-        return {"status": "recorded"}
+        record = req.model_dump(exclude={"rating"})
+        record["comment"] = (req.comment or "").strip() or None
+        events.log_feedback({"ts": _now(), **record})
+        return Response(status_code=204)
 
     @app.get("/stats")
     def stats():

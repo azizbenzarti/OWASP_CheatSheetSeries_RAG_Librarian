@@ -87,7 +87,21 @@ All of these cost time during the first `docker compose up --build`:
 **Lesson.** "Runs from a clean clone" has to be tested on a clean machine,
 early. Every one of these was invisible on the machine that wrote the code.
 
-## 5. Secrets were shared through chat
+## 5. Two people built the same API
+
+**What happened.** On the same day, two team members each built a FastAPI
+service over the Librarian (`src/api/app.py` on `main`, `src/api/main.py`
+on the deployment branch), and the UI was built against the first one.
+Merging meant choosing one API (we kept the one with request logging,
+`/stats` and the OpenAI generator) and adapting it to the UI's contract
+(`sources` with passage text, `rating` feedback returning 204, a flat
+`/health` body), and deleting the other.
+
+**Lesson.** Agree on who owns each piece and on the API contract (request
+and response shapes) before building on it, and push work in progress
+early so overlap shows up in hours, not at merge time.
+
+## 6. Secrets were shared through chat
 
 **What happened.** API keys were pasted into chat messages while setting up
 the service. They never reached the repo (`.env` is gitignored and
@@ -98,7 +112,7 @@ should be treated as exposed.
 screenshots. Exposed keys should be rotated; at minimum the OpenAI project
 should have a monthly budget cap.
 
-## 6. Our eval set is small, which limits what we can claim
+## 7. Our eval set is small, which limits what we can claim
 
 - dev has 26 answerable + 4 unanswerable questions: **one question is ~3.8
   points** of any answerable metric and **25 points** of the refusal rate.
@@ -117,7 +131,7 @@ should have a monthly budget cap.
 **Lesson.** Write more unanswerable questions, and spot-check the judge
 against a human on a sample before trusting small differences.
 
-## 7. Things we have not done yet
+## 8. Things we have not done yet
 
 - **Real user feedback.** The service logs every question and thumbs
   up/down (`data/logs/`, `GET /stats`), but at the time of writing it has

@@ -27,18 +27,9 @@ docker compose up --build
 
 Then open the UI at <http://localhost:8501> (API at <http://localhost:8000>, interactive docs at `/docs`). On the very first start the `api` container fetches the pinned corpus and builds the index (`heading` / 512 / overlap 0 / min 20) into Docker volumes, which takes a few minutes and about $0.02 of embeddings. Later starts reuse it. Keys are read from `.env` at run time (`env_file`); they are never copied into the image.
 
-| endpoint | what |
-|---|---|
-| `POST /ask` `{"question": str (1-1000 chars), "top_k": int = 5 (1-10)}` | `answer` with `[n]` markers, `citations` (`number`, `title`, `section_path`, `source_url` …), `answerable`, `refusal_reason`, `timings_ms`, `request_id`, `latency_ms` |
-| `POST /feedback` `{"request_id": str, "helpful": bool, "comment"?: str}` | records a thumbs up/down for a previous answer |
-| `GET /stats` | request count, p50/p95 latency, refusal rate and reasons, feedback counts |
-| `GET /health` | `200` once the index and models are loaded, `503` while loading or if loading failed |
+Endpoints (`POST /ask`, `POST /feedback`, `GET /stats`, `GET /health`) are described in [HTTP API](#http-api) below, and the three-pane UI in [UI](#ui).
 
-```bash
-curl -s localhost:8000/ask -H 'content-type: application/json' -d '{"question": "how should I store passwords?"}'
-```
-
-Qdrant, OpenAI or Gemini failures return a plain `503` without internal details. Every request and feedback is appended to `data/logs/requests.jsonl` / `feedback.jsonl` (bind-mounted, gitignored), and `/stats` is computed from those files. Code: `src/api/main.py`, `ui/app.py`, `Dockerfile`, `scripts/docker-entrypoint.sh`. Offline tests (fake Librarian, no keys): `python -m unittest tests.test_api -v`.
+Qdrant, OpenAI or Gemini failures return a plain `503` without internal details. Every request and feedback is appended to `data/logs/requests.jsonl` / `feedback.jsonl` (bind-mounted, gitignored), and `/stats` is computed from those files. Code: `src/api/main.py`, `src/ui/app.py`, `Dockerfile`, `scripts/docker-entrypoint.sh`. Offline tests (no keys): `python -m unittest tests.test_api tests.test_ui -v`.
 
 ## Corpus
 
@@ -168,7 +159,7 @@ Prerequisites: the offline index already built on your machine (`data/index/head
    # GEMINI_MODEL=   optional, default gemini-flash-latest; pin an exact id for reproducible eval runs
    ```
 
-3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK`:
+3. Offline tests (no keys, no Qdrant, no credits; Gemini/OpenAI/Qdrant are mocked). Expect `Ran 34 tests ... OK` (58 with `tests.test_api tests.test_ui` added, which need `requirements-ui.txt` too):
 
    ```bash
    python -m unittest tests.test_generation tests.test_retriever -v
@@ -199,4 +190,54 @@ Troubleshooting: `GEMINI_API_KEY is not set` -> step 2. Gemini `404` -> `GEMINI_
 |---|---|---|---|---|---|---|---|
 | 0.94 | 0.99 | 1.00 | 0.85 | 3/4 | 0/26 | 4.4 s / 8.8 s | $0.00034 |
 
-The one miss on unanswerable questions (q119, federated fine-tuning) was answered by stitching together nearby AI-security chunks. Latency is dominated by the CPU reranker (p50 ~2.1 s in the container), which is the obvious Week 8 target.
+The one miss on unanswerable questions (q119, federated fine-tuning) was answered by stitching together nearby AI-security chunks. Test-set numbers and the Week 8 variants are in `eval/results/generation_test_*.md` and `generation_dev_*.md`.
+
+## HTTP API
+
+`src/api/main.py` serves the `Librarian` above over HTTP with FastAPI. It loads the index, reranker and generator once at startup and reuses them for every request; it never rebuilds the index. Outside Docker it needs the same prerequisites as the full pipeline: the built index, Qdrant up, and `.env` filled in.
+
+```bash
+pip install -r requirements.txt          # adds fastapi, uvicorn, httpx
+python -m src.api                        # http://127.0.0.1:8000, interactive docs at /docs
+# or: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
+
+| endpoint | does |
+|---|---|
+| `POST /ask` | body `{"question": str, "top_k": int = 5}` (question 1-1000 chars, top_k 1-10). Returns `request_id`, `answer` with `[n]` markers, `answerable`, `refusal_reason`, `citations` and `sources` (each with `number`, `title`, `section_path`, `source_url`, `chunk_id` and the passage `text`), `model`, `timings_ms`, `latency_ms`. An "I don't know" is a normal `200` with `answerable: false`. |
+| `POST /feedback` | body `{rating: "up"\|"down", comment?, request_id?, question?, answer?, ...}` (or `helpful: bool` instead of `rating`). Appended to `data/logs/feedback.jsonl`. Returns `204`. Stores what was asked and answered, never who asked (no IP, no user id). Works even if the index failed to load. |
+| `GET /stats` | request count, p50/p95 latency, refusal rate and reasons, feedback counts; computed from the logs, so it survives restarts. |
+| `GET /health` | `200` `{status: "ok", chunks, rerank, model, qdrant}` once the index is loaded and Qdrant holds one point per chunk; `503` with the reason in `error` / `qdrant` otherwise. |
+
+```bash
+curl -s localhost:8000/health
+curl -s -X POST localhost:8000/ask -H 'content-type: application/json'   -d '{"question": "how should I store passwords?"}'
+```
+
+Status codes: `422` bad input (checked before any retrieval or API call), `503` the Librarian isn't loaded or an upstream call (OpenAI, Qdrant, Gemini) failed; the error class is logged server-side, never echoed to the client. Every request is appended to `data/logs/requests.jsonl`.
+
+```bash
+python -m unittest tests.test_api -v     # offline: fake Librarian, no keys or Qdrant
+```
+
+## UI
+
+`src/ui/app.py` is a Streamlit page that talks to the API over HTTP only (`API_URL`), so it needs no index, no torch and no keys.
+
+```bash
+pip install -r requirements-ui.txt                          # streamlit, httpx
+python -m src.api                                           # terminal 1: the API
+API_URL=http://127.0.0.1:8000 streamlit run src/ui/app.py   # terminal 2: http://localhost:8501
+```
+
+A three-pane console:
+
+- **Left:** this session's questions (unanswered ones in amber), index status, and how many passages are sent to the model.
+- **Middle:** the question, the answer with numbered `[n]` citations, per-stage timings (vector, bm25, rerank, generation, total) and how many of the passages given were cited, then Helpful / Not helpful (with an optional comment) sent to `POST /feedback`.
+- **Right:** one tab per cited source showing the passage exactly as the model received it, with line numbers. Lines that share specific terms or values with the sentences citing that source are highlighted, as a reading aid. For "I don't know" answers it shows the passages that were searched instead.
+
+Model output and passage text are HTML-escaped before rendering (the corpus is full of example attack payloads). Theme in `.streamlit/config.toml` (read when Streamlit runs from the repo root).
+
+```bash
+python -m unittest tests.test_ui -v     # offline: API calls mocked
+```
