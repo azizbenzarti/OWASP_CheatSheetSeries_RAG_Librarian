@@ -37,10 +37,15 @@ class OpenAIGenerator:
 
             client = OpenAI(api_key=api_key, max_retries=3)  # the SDK retries 429/5xx with backoff
         self._client = client
+        # Only for reasoning models (gpt-5*, o*): e.g. "minimal" keeps hidden
+        # reasoning tokens -- billed as output -- and latency down.
+        self.reasoning_effort = os.environ.get("OPENAI_REASONING_EFFORT") or None
         # Structured outputs' strict mode requires additionalProperties: false.
         self._schema = {**RESPONSE_SCHEMA, "additionalProperties": False}
+        self.last_usage: dict[str, int] | None = None  # billed tokens of the last call, for the cost eval
 
     def __call__(self, system_prompt: str, user_prompt: str) -> str | None:
+        extra = {"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}
         response = self._client.chat.completions.create(
             model=self.model,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
@@ -48,6 +53,11 @@ class OpenAIGenerator:
                 "type": "json_schema",
                 "json_schema": {"name": "answer", "schema": self._schema, "strict": True},
             },
+            **extra,
+        )
+        usage = getattr(response, "usage", None)
+        self.last_usage = (
+            {"input_tokens": usage.prompt_tokens, "output_tokens": usage.completion_tokens} if usage else None
         )
         # content is None on a refusal; answer.py turns that into an "I don't know".
         return response.choices[0].message.content

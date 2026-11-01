@@ -48,7 +48,7 @@ class CrossEncoderReranker:
     diagnostics."""
 
     def __init__(self, model_name: str | None = None, max_length: int | None = None) -> None:
-        self.model_name = model_name or os.environ.get("RERANKER_MODEL", DEFAULT_RERANKER_MODEL)
+        self.model_name = model_name or os.environ.get("RERANKER_MODEL") or DEFAULT_RERANKER_MODEL  # "RERANKER_MODEL=" (empty) means default
         if max_length is None:
             env_value = os.environ.get("RERANKER_MAX_LENGTH")
             max_length = int(env_value) if env_value else DEFAULT_MAX_LENGTH

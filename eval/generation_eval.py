@@ -56,7 +56,10 @@ from src.generation import Answer, Librarian  # noqa: E402
 SPLITS = {"dev": ROOT / "data" / "dev.jsonl", "test": ROOT / "data" / "test.jsonl"}
 TOP_K = 5  # what the API sends to the model
 # USD per 1M tokens (input, output). Check current prices before quoting these in the report.
-PRICES = {"gpt-4o-mini": (0.15, 0.60), "text-embedding-3-small": (0.02, 0.0)}
+PRICES = {
+    "gpt-4o-mini": (0.15, 0.60), "gpt-4.1-mini": (0.40, 1.60), "gpt-5-nano": (0.05, 0.40),
+    "gpt-5-mini": (0.25, 2.00), "text-embedding-3-small": (0.02, 0.0),
+}
 SCORE = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
 
 JUDGE_PROMPT = """\
@@ -140,9 +143,11 @@ class RecordingGenerator:
         return out
 
 
-def build_librarian(generator: str) -> tuple[Librarian, RecordingGenerator]:
+def build_librarian(generator: str, rerank: bool = True) -> tuple[Librarian, RecordingGenerator]:
     """Same wiring as the API (src/api/main.py): retriever + MiniLM reranker
-    + the chosen generator."""
+    + the chosen generator. Query embeddings bypass every cache
+    (cache_queries=False) so latency is a real API call each time, even
+    when the same questions were run before."""
     from src.retrieval.reranker import make_reranker
     from src.retrieval.retriever import Retriever
 
@@ -155,7 +160,8 @@ def build_librarian(generator: str) -> tuple[Librarian, RecordingGenerator]:
 
         inner = OpenAIGenerator()
     rec = RecordingGenerator(inner)
-    return Librarian(Retriever.from_config(reranker=make_reranker()), rec, rec.model), rec
+    retriever = Retriever.from_config(reranker=make_reranker() if rerank else None, cache_queries=False)
+    return Librarian(retriever, rec, rec.model), rec
 
 
 def gold_passages(row: dict) -> list[str]:
@@ -187,17 +193,23 @@ def token_counter(model: str):
     return lambda text: len(enc.encode(text))
 
 
-def evaluate(rows: list[dict], librarian: Librarian, rec: RecordingGenerator, judge_model: str) -> list[dict]:
+def evaluate(
+    rows: list[dict], librarian: Librarian, rec: RecordingGenerator, judge_model: str,
+    top_k: int = TOP_K, rerank_candidates: int = 20,
+) -> list[dict]:
     client = openai_client()
     chunk_text = {cid: c["text"] for cid, c in librarian.retriever.chunks_by_id.items()}
     count = token_counter(rec.model or "gpt-4o-mini")
     results = []
     for i, row in enumerate(rows, 1):
         rec.last = None
+        if hasattr(rec.inner, "last_usage"):
+            rec.inner.last_usage = None
         t = time.perf_counter()
-        ans = librarian.ask(row["question"], top_k=TOP_K)
+        ans = librarian.ask(row["question"], top_k=top_k, rerank_candidates=rerank_candidates)
         latency_ms = (time.perf_counter() - t) * 1000
 
+        usage = rec.last and getattr(rec.inner, "last_usage", None)
         gold = gold_passages(row) if row["answerable"] else []
 
         def hits(sources) -> bool:
@@ -211,8 +223,10 @@ def evaluate(rows: list[dict], librarian: Librarian, rec: RecordingGenerator, ju
             "gold_in_context": hits(ans.sources) if gold else None,
             "gold_cited": hits(ans.citations) if gold and ans.answerable else None,
             "latency_ms": round(latency_ms, 1), "timings_ms": ans.timings_ms,
-            "input_tokens": count(rec.last[0] + rec.last[1]) if rec.last else 0,
-            "output_tokens": count(rec.last[2]) if rec.last else 0,
+            # Billed usage from the API when the generator reports it (includes
+            # hidden reasoning tokens); else a tiktoken count of the exact text.
+            "input_tokens": usage["input_tokens"] if usage else (count(rec.last[0] + rec.last[1]) if rec.last else 0),
+            "output_tokens": usage["output_tokens"] if usage else (count(rec.last[2]) if rec.last else 0),
             "embed_tokens": count(row["question"]),
         }
         if ans.answerable:
@@ -269,9 +283,11 @@ def summarize(results: list[dict], model: str | None) -> dict:
     }
 
 
-def write_outputs(split: str, results: list[dict], summary: dict, model: str | None, judge_model: str) -> None:
+def write_outputs(
+    split: str, results: list[dict], summary: dict, model: str | None, judge_model: str, config: str, tag: str = "",
+) -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    base = RESULTS_DIR / f"generation_{split}"
+    base = RESULTS_DIR / f"generation_{split}{'_' + tag if tag else ''}"
     with open(f"{base}.jsonl", "w", encoding="utf-8") as f:
         for r in results:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -288,8 +304,8 @@ def write_outputs(split: str, results: list[dict], summary: dict, model: str | N
     cost = s["cost_per_request_usd"]
     lines = [
         f"# Generation eval ({split} set)", "",
-        f"Generator: `{model}`. Judge: `{judge_model}`. Pipeline: hybrid + MiniLM rerank of top 20 -> top {TOP_K} "
-        "-> generator -> citation check (the deployed `Librarian`).", "",
+        f"Generator: `{model}`. Judge: `{judge_model}`. Config: {config}. Query embeddings uncached "
+        "(real API call each time).", "",
         f"**Sample size**: {s['n_answerable']} answerable + {s['n_unanswerable']} unanswerable questions. One answerable "
         f"question is ~{100 / max(1, s['n_answerable']):.1f} points; one unanswerable is "
         f"{100 / max(1, s['n_unanswerable']):.0f} points of the refusal rate.", "",
@@ -299,7 +315,7 @@ def write_outputs(split: str, results: list[dict], summary: dict, model: str | N
         f"| faithfulness (claims) | {fmt(s['faithfulness_claims'])} | claims supported by any given source |",
         f"| fully faithful answers | {fmt(s['fully_faithful_answers'])} | answers with every claim supported |",
         f"| citation accuracy | {fmt(s['citation_accuracy'])} | cited claims supported by the source they cite |",
-        f"| gold passage in context | {fmt(s['gold_in_context'])} | retrieval: gold passage among the {TOP_K} sources |",
+        f"| gold passage in context | {fmt(s['gold_in_context'])} | retrieval: gold passage among the sources given |",
         f"| gold passage cited | {fmt(s['gold_cited_when_answered'])} | of answered answerable questions, a cited source holds the gold passage |",
         f"| \"I don't know\" on unanswerable | {fmt(s['idk_on_unanswerable'])} | want 1.0 |",
         f"| false refusals | {fmt(s['false_refusals'])} | refused an answerable question; want 0 |",
@@ -350,18 +366,30 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=SPLITS, default="dev")
     ap.add_argument("--generator", choices=["openai", "gemini"], default=os.environ.get("GENERATOR") or "openai")
+    ap.add_argument("--gen-model", default=None, help="OpenAI generation model (overrides OPENAI_GENERATION_MODEL)")
+    ap.add_argument("--reasoning-effort", default=None, help="for gpt-5*/o* generators, e.g. minimal")
+    ap.add_argument("--top-k", type=int, default=TOP_K, help="sources given to the generator")
+    ap.add_argument("--rerank-candidates", type=int, default=20, help="hybrid candidates the reranker scores")
+    ap.add_argument("--no-rerank", action="store_true", help="plain hybrid retrieval")
     ap.add_argument("--judge-model", default="gpt-4.1-mini")
-    ap.add_argument("--limit", type=int, default=None, help="first N questions only (smoke run)")
+    ap.add_argument("--tag", default="", help="suffix for the output files, e.g. topk3")
+    ap.add_argument("--limit", type=int, default=None, help="first N questions only (smoke run, writes nothing)")
     args = ap.parse_args()
+    if args.gen_model:
+        os.environ["OPENAI_GENERATION_MODEL"] = args.gen_model
+    if args.reasoning_effort:
+        os.environ["OPENAI_REASONING_EFFORT"] = args.reasoning_effort
 
     rows = [json.loads(line) for line in SPLITS[args.split].open(encoding="utf-8")][: args.limit]
-    librarian, rec = build_librarian(args.generator)
-    results = evaluate(rows, librarian, rec, args.judge_model)
+    librarian, rec = build_librarian(args.generator, rerank=not args.no_rerank)
+    config = (f"hybrid{'' if args.no_rerank else f' + MiniLM rerank of top {args.rerank_candidates}'} -> top "
+              f"{args.top_k}{f', reasoning_effort={args.reasoning_effort}' if args.reasoning_effort else ''}")
+    results = evaluate(rows, librarian, rec, args.judge_model, args.top_k, args.rerank_candidates)
     summary = summarize(results, rec.model)
-    print(json.dumps(summary, indent=2))
+    print(json.dumps({"config": config, "model": rec.model, **summary}, indent=2))
     if args.limit is None:
-        write_outputs(args.split, results, summary, rec.model, args.judge_model)
-        print(f"wrote eval/results/generation_{args.split}.{{md,csv,jsonl}} and _failures.md")
+        write_outputs(args.split, results, summary, rec.model, args.judge_model, config, args.tag)
+        print(f"wrote eval/results/generation_{args.split}{'_' + args.tag if args.tag else ''}.*")
 
 
 if __name__ == "__main__":

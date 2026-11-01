@@ -180,12 +180,13 @@ def answer_question(
     top_k: int = 5,
     min_vector_score: float | None = None,
     model: str | None = None,
+    rerank_candidates: int = RERANK_CANDIDATES,
 ) -> Answer:
     """The whole pipeline for one question. `retriever` and `generate` are
     passed in (not built here) so tests can use fakes, and so a long-lived
     caller (the future API) loads the index once and reuses it."""
     t0 = time.perf_counter()
-    candidates = RERANK_CANDIDATES if retriever.reranker else DEFAULT_CANDIDATES
+    candidates = rerank_candidates if retriever.reranker else DEFAULT_CANDIDATES
     retrieved = retriever.retrieve(
         question, top_k=top_k, mode="hybrid", candidates=candidates, min_vector_score=min_vector_score
     )
@@ -241,8 +242,13 @@ class Librarian:
         generator = GeminiGenerator()
         return cls(retriever, generator, generator.model)
 
-    def ask(self, question: str, top_k: int = 5, min_vector_score: float | None = None) -> Answer:
-        return answer_question(question, self.retriever, self.generate, top_k, min_vector_score, self.model)
+    def ask(
+        self, question: str, top_k: int = 5, min_vector_score: float | None = None,
+        rerank_candidates: int = RERANK_CANDIDATES,
+    ) -> Answer:
+        return answer_question(
+            question, self.retriever, self.generate, top_k, min_vector_score, self.model, rerank_candidates
+        )
 
 
 _default_librarian: Librarian | None = None
