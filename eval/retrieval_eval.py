@@ -44,7 +44,7 @@ from src.retrieval.reranker import DEFAULT_RERANKER_MODEL, make_reranker  # noqa
 from src.retrieval.retriever import DEFAULT_INDEX_DIR, MODES, Retriever  # noqa: E402
 
 RERANK_CANDIDATES = 20  # hybrid's top 20 go to the reranker (per docs/design.md)
-SECOND_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+SECOND_RERANKER_MODEL = "BAAI/bge-reranker-base"  # Week-8 comparison; DEFAULT_RERANKER_MODEL (MiniLM) is the shipped choice
 KNOWN_ISSUES = {
     "q021": "passage spans a sub-heading boundary -- no chunking config can contain it whole (docs/design.md)",
     "q109": "primary passage is a generic intro that never mentions the topic (MCP); the real answer is in "
@@ -81,6 +81,21 @@ def run_mode(retriever: Retriever, questions: list[dict], mode: str, top_k: int,
         "search_p50_ms": round(statistics.median(latencies), 1), "search_p95_ms": round(pct(latencies, 95), 1),
     }
     return metrics, flags_by_id, top3_by_id, top_scores_by_id
+
+
+def measure_latency_only(retriever: Retriever, questions: list[dict], mode: str, candidates: int | None = None) -> dict:
+    """Like run_mode(), minus the recall bookkeeping -- recall doesn't
+    change with caching, only latency does, so there's no point
+    re-deriving hit flags for a cache-bypass measurement."""
+    latencies = []
+    kwargs = {"candidates": candidates} if candidates is not None else {}
+    for q in questions:
+        res = retriever.retrieve(q["question"], top_k=10, mode=mode, **kwargs)
+        latencies.append(res.timings_ms.get("total_ms", 0.0))
+    return {
+        "p50_ms": round(statistics.median(latencies), 1),
+        "p95_ms": round(pct(latencies, 95), 1),
+    }
 
 
 def write_csv(rows: list[dict]) -> None:
@@ -242,10 +257,56 @@ def write_calibration(
         f.write(text)
 
 
+def run_cache_comparison(index_dir: str | None, answerable: list[dict]) -> None:
+    """Focused measurement, not the full ablation: cached vs uncached p50/p95
+    for vector, hybrid, and hybrid+rerank (default model). Recall doesn't
+    change with caching -- only latency does -- so this skips the recall
+    bookkeeping and the second reranker model entirely, instead of redoing
+    the whole (much slower) ablation twice just to re-measure latency."""
+    rows = []
+    for mode, candidates, reranker_model in (("vector", None, None), ("hybrid", None, None), ("hybrid", RERANK_CANDIDATES, DEFAULT_RERANKER_MODEL)):
+        label = "hybrid+rerank" if reranker_model else mode
+        print(f"measuring {label} ...", flush=True)
+        reranker = make_reranker(reranker_model) if reranker_model else None
+        cached_retriever = Retriever.from_config(index_dir, reranker=reranker, cache_queries=True)
+        uncached_retriever = Retriever.from_config(index_dir, reranker=reranker, cache_queries=False)
+        cached = measure_latency_only(cached_retriever, answerable, mode, candidates)
+        uncached = measure_latency_only(uncached_retriever, answerable, mode, candidates)
+        row = {
+            "mode": label,
+            "cached_p50_ms": cached["p50_ms"], "cached_p95_ms": cached["p95_ms"],
+            "uncached_p50_ms": uncached["p50_ms"], "uncached_p95_ms": uncached["p95_ms"],
+        }
+        rows.append(row)
+        print(row, flush=True)
+
+    header = list(rows[0])
+    lines = [
+        "\n# Cached vs uncached query-embedding latency (dev set)\n",
+        "Cached = in-process + on-disk embedding cache both active (production default). "
+        "Uncached = both bypassed, forcing a real OpenAI embeddings.create() call every time "
+        "(src/indexing/embed.py's use_cache=False / Retriever.from_config(cache_queries=False)). "
+        "BM25 isn't shown: it never calls the embedding API.\n",
+        "| " + " | ".join(header) + " |", "|" + "---|" * len(header),
+        *["| " + " | ".join(str(r[h]) for h in header) + " |" for r in rows],
+    ]
+    text = "\n".join(lines) + "\n"
+    print(text)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    with (RESULTS_DIR / "retrieval_dev.md").open("a", encoding="utf-8") as f:
+        f.write(text)
+    print(f"appended to {RESULTS_DIR / 'retrieval_dev.md'}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--index-dir", default=None)
     ap.add_argument("-k", "--top-k", type=int, default=10)
+    ap.add_argument(
+        "--no-cache", action="store_true",
+        help="skip the full ablation; instead measure cached vs uncached (real API call) "
+        "p50/p95 latency for vector, hybrid, and hybrid+rerank",
+    )
     args = ap.parse_args()
 
     rows = [json.loads(line) for line in DEV_PATH.open(encoding="utf-8")]
@@ -253,6 +314,10 @@ def main() -> None:
     unanswerable = [r for r in rows if not r["answerable"]]
     print(f"dev: {len(answerable)} answerable, {len(unanswerable)} unanswerable "
           f"(1 question ~= {100/len(answerable):.1f} points of recall)", flush=True)
+
+    if args.no_cache:
+        run_cache_comparison(args.index_dir, answerable)
+        return
 
     base_retriever = Retriever.from_config(args.index_dir)
 

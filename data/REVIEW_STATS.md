@@ -77,3 +77,25 @@ q004, q005, q008, q011, q015, q016, q021, q022, q024, q027, q031, q035, q036, q0
 | other | 6 | 6 |
 | **total** | **120** | **119** |
 
+## Post-freeze label fixes
+
+Changes made to `data/eval.json` / `data/dev.jsonl` after this freeze, found
+during Step 4 (retrieval) rather than the original review pass. These are
+label corrections to the eval set itself, not retriever bugs — logged here
+so the counts above stay an accurate record of the original review, with
+any later correction tracked separately.
+
+- **q109** (`comparative`, `ai_security`) — found via
+  `eval/retrieval_eval.py`'s failure diagnostics: every retrieval mode
+  missed this question, because its primary `source_passage` was
+  `AI_Agent_Security_Cheat_Sheet.md`'s generic intro, which never mentions
+  MCP — the question's actual topic. The real MCP-specific content (which
+  *does* support the question) was sitting in `extra_sources`, uncredited
+  by the primary-passage-only hit check. Swapped: `MCP_Security_Cheat_Sheet.md`'s
+  intro is now the primary passage, `AI_Agent_Security_Cheat_Sheet.md`'s
+  intro moved to `extra_sources`, and the `answer` trimmed to only what the
+  two passages (now correctly assigned) support. Also corrected
+  `source_section` on both to the full heading path (was missing the H1
+  prefix on both sides — a pre-existing, unrelated formatting slip). See
+  the row's `review_notes` field for the full detail.
+

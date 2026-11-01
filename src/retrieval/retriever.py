@@ -190,9 +190,21 @@ class Retriever:
     # ----- construction ------------------------------------------------ #
 
     @classmethod
-    def from_config(cls, index_dir: Path | str | None = None, reranker: Reranker | None = None) -> "Retriever":
+    def from_config(
+        cls,
+        index_dir: Path | str | None = None,
+        reranker: Reranker | None = None,
+        cache_queries: bool = True,
+    ) -> "Retriever":
         """Wire up the real, already-built indexes using the offline
-        pipeline's own functions and .env configuration."""
+        pipeline's own functions and .env configuration.
+
+        cache_queries=False bypasses both the in-process query-embedding
+        cache below and embed_texts()'s on-disk cache, forcing a real API
+        call every time. Only meant for measuring true, uncached latency
+        (see eval/retrieval_eval.py --no-cache) -- leave it True otherwise,
+        including in production, where skipping repeat API calls is exactly
+        the point."""
         import bm25s
         from qdrant_client.http import models as qm
 
@@ -239,6 +251,9 @@ class Retriever:
         embed_cache: dict[str, list[float]] = {}
 
         def embed_query(q: str) -> list[float]:
+            if not cache_queries:
+                [vector] = embed_texts([q], embed_config, show_progress=False, use_cache=False)
+                return vector
             if q not in embed_cache:  # repeated questions skip the API call
                 if len(embed_cache) >= 256:
                     embed_cache.pop(next(iter(embed_cache)))

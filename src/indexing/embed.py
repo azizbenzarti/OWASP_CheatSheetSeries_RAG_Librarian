@@ -130,9 +130,16 @@ def embed_texts(
     batch_size: int = DEFAULT_BATCH_SIZE,
     max_input_tokens: int = DEFAULT_MAX_INPUT_TOKENS,
     show_progress: bool = True,
+    use_cache: bool = True,
 ) -> list[list[float]]:
     """Embed a list of texts, serving whatever's already cached for this
-    exact (model, text) pair and only calling the API for the rest."""
+    exact (model, text) pair and only calling the API for the rest.
+
+    use_cache=False forces a real API call for every text, ignoring
+    whatever's already on disk (still writes the result back afterward --
+    harmless, since the vector is the same either way). Only meant for
+    measuring true, uncached latency (see eval/retrieval_eval.py --no-cache);
+    production code should always leave this True."""
     encoding = _encoding_for(config.model)
     stats = stats if stats is not None else EmbeddingStats(config.cost_per_1m_tokens)
 
@@ -146,7 +153,7 @@ def embed_texts(
             f"embed_text at index {i} is {n_tokens} tokens, over the "
             f"{max_input_tokens}-token input limit for model {config.model!r}"
         )
-        cached = _cache_get(key)
+        cached = _cache_get(key) if use_cache else None
         if cached is not None:
             results[i] = cached
         else:

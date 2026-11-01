@@ -1870,21 +1870,21 @@
     "category": "ai_security",
     "answerable": true,
     "question": "Our agent uses several MCP tool servers. Why should we consider MCP-specific security alongside general AI agent security?",
-    "answer": "The AI Agent Security sheet addresses the architecture and attack surfaces of agents that reason, plan, use tools, retain memory, and act. The MCP sheet describes an additional attack surface where agents dynamically choose tools and parameters through natural language, combining prompt injection, supply-chain, and confused-deputy risks. It covers MCP clients, servers, and their connections. An MCP deployment therefore needs consideration of that deployment-specific surface alongside general agent architecture security.",
-    "source_file": "AI_Agent_Security_Cheat_Sheet.md",
-    "source_section": "Introduction",
-    "source_passage": "AI agents are autonomous systems powered by Large Language Models (LLMs) that can reason, plan, use tools, maintain memory, and take actions to accomplish goals. This expanded capability introduces unique security risks beyond traditional LLM prompt injection. This cheat sheet provides best practices to secure AI agent architectures and minimize attack surfaces.",
+    "answer": "AI agents' expanded capabilities (reasoning, planning, tool use, memory, and autonomous action) introduce security risks beyond traditional LLM prompt injection -- what the AI Agent Security sheet addresses. MCP introduces a further, specific attack surface on top of that: it lets the LLM itself dynamically decide which tools to invoke and with what parameters, rather than developers controlling each call, combining prompt injection with supply-chain and confused-deputy risks across MCP clients, servers, and the connections between them. An MCP-based agent therefore needs both: general agent-security practices for the broader autonomous-action risks, and MCP-specific practices for the protocol's own dynamic-tool-execution risk.",
+    "source_file": "MCP_Security_Cheat_Sheet.md",
+    "source_section": "MCP (Model Context Protocol) Security Cheat Sheet > Introduction",
+    "source_passage": "However, MCP introduces a fundamentally new attack surface: AI agents dynamically executing tools based on natural language, with access to sensitive systems. Unlike traditional APIs where developers control every call, MCP lets LLMs decide which tools to invoke, when, and with what parameters. This is creating unique security risks that combine prompt injection, supply chain attacks, and confused deputy problems.\n\nThis cheat sheet provides best practices to secure MCP deployments and minimize attack surfaces across clients, servers, and the connections between them.",
     "extra_sources": [
       {
-        "source_file": "MCP_Security_Cheat_Sheet.md",
-        "source_section": "Introduction",
-        "source_passage": "However, MCP introduces a fundamentally new attack surface: AI agents dynamically executing tools based on natural language, with access to sensitive systems. Unlike traditional APIs where developers control every call, MCP lets LLMs decide which tools to invoke, when, and with what parameters. This is creating unique security risks that combine prompt injection, supply chain attacks, and confused deputy problems.\n\nThis cheat sheet provides best practices to secure MCP deployments and minimize attack surfaces across clients, servers, and the connections between them."
+        "source_file": "AI_Agent_Security_Cheat_Sheet.md",
+        "source_section": "AI Agent Security Cheat Sheet > Introduction",
+        "source_passage": "AI agents are autonomous systems powered by Large Language Models (LLMs) that can reason, plan, use tools, maintain memory, and take actions to accomplish goals. This expanded capability introduces unique security risks beyond traditional LLM prompt injection. This cheat sheet provides best practices to secure AI agent architectures and minimize attack surfaces."
       }
     ],
     "origin": "llm_draft",
     "verified": true,
     "reviewer": "reviewer_1",
-    "review_notes": "Removed detailed controls and named attacks unsupported by the introductions; clarified complementary scope without implying every recommendation applies to every deployment."
+    "review_notes": "Post-freeze label fix (see data/REVIEW_STATS.md): the primary source_passage was the AI_Agent_Security_Cheat_Sheet.md intro, which never mentions MCP -- any retriever scored against it as primary would correctly be penalized for finding the actually-relevant MCP content instead. Swapped so MCP_Security_Cheat_Sheet.md's intro (which directly addresses the question's MCP-specific angle) is primary and the AI Agent Security intro moved to extra_sources; trimmed the answer to only what the two passages, now correctly assigned, support. Supersedes the original review note below, kept for history: \"Removed detailed controls and named attacks unsupported by the introductions; clarified complementary scope without implying every recommendation applies to every deployment.\""
   },
   {
     "id": "q110",
