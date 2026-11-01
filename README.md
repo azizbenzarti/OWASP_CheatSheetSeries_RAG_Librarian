@@ -191,4 +191,12 @@ Prerequisites: the offline index already built on your machine (`data/index/head
 
 Troubleshooting: `GEMINI_API_KEY is not set` -> step 2. Gemini `404` -> `GEMINI_MODEL` names a model your key can't use; unset it. `429` -> free-tier rate limit, wait and retry. `has no chunks.jsonl` / `Qdrant collection ... is not available` -> the existing index or Qdrant isn't there (same errors as `python -m src.retrieval`).
 
-Not done yet: answer-quality evaluation on `data/dev.jsonl` (refusal on the unanswerable questions, citation correctness).
+### Generation eval
+
+`python eval/generation_eval.py` (dev by default; `--split test` only for final numbers) runs the deployed pipeline on every question and grades each answer with an LLM judge (`gpt-4.1-mini`, a stronger model than the generator; it sees only the question, reference answer, answer and sources). Results in `eval/results/generation_dev.md`, per-question failures in `generation_dev_failures.md`. Dev set, `gpt-4o-mini` generator (26 answerable + 4 unanswerable, so one answerable question is ~3.8 points):
+
+| correctness | faithfulness (claims) | citation accuracy | gold passage cited | "I don't know" on unanswerable | false refusals | p50 / p95 latency | cost / request |
+|---|---|---|---|---|---|---|---|
+| 0.94 | 0.99 | 1.00 | 0.85 | 3/4 | 0/26 | 4.4 s / 8.8 s | $0.00034 |
+
+The one miss on unanswerable questions (q119, federated fine-tuning) was answered by stitching together nearby AI-security chunks. Latency is dominated by the CPU reranker (p50 ~2.1 s in the container), which is the obvious Week 8 target.
