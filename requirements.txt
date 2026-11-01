@@ -8,3 +8,12 @@ openai==3.38.0
 python-dotenv==1.2.4
 tqdm==4.70.1
 qdrant-client==1.12.2
+
+# Retrieval reranker (Step 4, src/retrieval/reranker.py): a cross-encoder
+# run locally, CPU is fine for a 20-candidate pool. The CPU-only torch
+# build is ~200MB vs several GB for the default CUDA build, which this
+# project has no use for -- --extra-index-url below is what makes `pip
+# install -r requirements.txt` pick up that smaller wheel automatically.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0+cpu
+sentence-transformers==6.2.0

@@ -4,6 +4,17 @@ CS496 AI Engineering, Project 2. A retrieval-augmented service that answers
 application-security questions from the OWASP Cheat Sheet Series, with
 citations, and says "I don't know" when the corpus doesn't cover something.
 
+## Architecture
+
+![Architecture diagram: offline ingestion (OWASP cheat sheets to chunks to embeddings/BM25 in Qdrant) and online retrieval (question to hybrid search to rerank to generation) for The Librarian](docs/architecture.png)
+
+Offline (once per corpus commit): load → chunk → embed + BM25-index into
+Qdrant. Online (every question): hybrid retrieval (vector + BM25, RRF
+fusion) → cross-encoder rerank → generation, with a low-score refusal path.
+Runs via Docker Compose (Streamlit, FastAPI, Qdrant) — no Kubernetes. See
+`docs/design.md` for the reasoning behind each piece; an editable source is
+at `docs/architecture.svg`.
+
 ## Corpus
 
 [OWASP Cheat Sheet Series](https://github.com/OWASP/CheatSheetSeries),
@@ -68,7 +79,6 @@ Quality-check freezing has not happened separately from human review — see
 `data/REVIEW_GUIDE.md` and `data/REVIEW_STATS.md` for how `eval.json` was
 produced.
 
- 
 ## Online retrieval
 
 `src/retrieval/retriever.py` answers a question from the **already-built** indexes (it never rebuilds or re-embeds anything). It needs Qdrant running, `.env` filled in (same `EMBEDDING_MODEL` the index was built with — checked against `manifest.json`), and `data/index/heading_mt512_min20/` present.
@@ -77,11 +87,14 @@ produced.
 from src.retrieval import Retriever, format_context
 
 retriever = Retriever.from_config()          # load once
-result = retriever.retrieve("how should I store passwords?", top_k=5)   # mode="hybrid" | "vector" | "bm25"
+result = retriever.retrieve("how should I store passwords?", top_k=5)   # mode="hybrid" | "vector" | "bm25" | "hybrid+rerank"
 context = format_context(result.chunks)      # numbered [1], [2]... block for the generation prompt
+```
 
+Each `RetrievedChunk` carries `chunk_id`, `source_file`, `title`, `section_path`, `text`, `score`, `rank`, `source_url`, `rerank_score` (set only when a reranker is attached) plus per-retriever `vector_score`/`vector_rank`/`bm25_score`/`bm25_rank`. Hybrid fuses the two rankings with Reciprocal Rank Fusion; `hybrid+rerank` additionally reranks hybrid's top 20 with a cross-encoder (see `docs/design.md`'s "Retrieval" section). Optional `filters={"source_file": ..., "has_code": True}` and `min_vector_score` ("I don't know" gate, calibrate it first).
 
-Each RetrievedChunk carries chunk_id, source_file, title, section_path, text, score, rank, source_url plus per-retriever vector_score/vector_rank/bm25_score/bm25_rank. Hybrid fuses the two rankings with Reciprocal Rank Fusion. Optional filters={"source_file": ..., "has_code": True} and min_vector_score ("I don't know" gate, calibrate it first).
-python -m src.retrieval.retriever "how should I store passwords?" --context
-python eval/retrieval_eval.py            # dev-set ablation: bm25 / vector / hybrid + score calibration
+```bash
+python -m src.retrieval "how should I store passwords?" --context
+python eval/retrieval_eval.py            # dev-set ablation: bm25 / vector / hybrid / hybrid+rerank + score calibration
 python -m unittest tests.test_retriever  # offline unit tests (no Qdrant / API key)
+```

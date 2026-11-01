@@ -14,13 +14,20 @@ Modes (so the ablation table in the report can be produced from one class):
   "vector" Qdrant only
   "hybrid" both, fused with Reciprocal Rank Fusion (RRF)
 
+Reranking ("hybrid+rerank" in the ablation) isn't a 4th mode string -- it's
+whatever Reranker callable is attached at construction time (see
+reranker.py). Pass candidates=20 alongside mode="hybrid" on a
+reranker-equipped instance to match "rerank the top 20" (candidates controls
+how deep each retriever searches before fusion, which is also how many
+fused candidates reach the reranker -- see `retrieve()` below).
+
 Usage:
     retriever = Retriever.from_config()                # loads once, reuse it
     result = retriever.retrieve("how should I store passwords?", top_k=5)
     for c in result.chunks: print(c.chunk_id, c.score)
     prompt_context = format_context(result.chunks)     # hand to the generator
 
-CLI:  python -m src.retrieval.retriever "how should I store passwords?"
+CLI:  python -m src.retrieval "how should I store passwords?"
 """
 from __future__ import annotations
 
@@ -55,7 +62,7 @@ class RetrievedChunk:
     title: str
     section_path: str
     text: str
-    score: float  # final ranking score: RRF for hybrid, cosine for vector, BM25 for bm25
+    score: float  # final ranking score: RRF for hybrid, cosine for vector, BM25 for bm25, cross-encoder score if reranked
     rank: int  # 1-based position in the returned list
     source_url: str
     n_tokens: int = 0
@@ -68,6 +75,10 @@ class RetrievedChunk:
     vector_rank: int | None = None
     bm25_score: float | None = None
     bm25_rank: int | None = None
+    # Set only when a reranker is attached (see reranker.py). vector_rank/
+    # bm25_rank above are untouched by reranking, so comparing them against
+    # the post-rerank `rank` shows exactly what reranking moved.
+    rerank_score: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -331,6 +342,13 @@ class Retriever:
             t = time.perf_counter()
             results = self.reranker(question, results)
             timings["rerank_ms"] = (time.perf_counter() - t) * 1000
+            # Reranking changes what "final" means: without this, .score
+            # would still show the pre-rerank hybrid/vector/bm25 score,
+            # which the reranker has just reordered past -- confusing to
+            # read (a lower-ranked chunk could show a higher .score).
+            for c in results:
+                if c.rerank_score is not None:  # guard against a reranker that forgot to set it
+                    c.score = c.rerank_score
         results = results[:top_k]
         for rank, chunk in enumerate(results, start=1):
             chunk.rank = rank
@@ -386,7 +404,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Query the built OWASP index.")
     parser.add_argument("question")
     parser.add_argument("-k", "--top-k", type=int, default=5)
-    parser.add_argument("--mode", choices=MODES, default="hybrid")
+    parser.add_argument("--mode", choices=MODES, default="hybrid", help='ignored if --rerank is set (reranking only makes sense on "hybrid")')
+    parser.add_argument("--rerank", action="store_true", help="hybrid+rerank: hybrid top 20 candidates -> cross-encoder rerank -> top-k")
+    parser.add_argument("--reranker-model", default=None, help="overrides RERANKER_MODEL / the default")
     parser.add_argument("--index-dir", default=None)
     parser.add_argument("--source-file", default=None, help="restrict to one cheat sheet, e.g. Password_Storage_Cheat_Sheet.md")
     parser.add_argument("--has-code", action="store_true", help="only chunks containing a code block")
@@ -401,9 +421,18 @@ def main() -> None:
     if args.has_code:
         filters["has_code"] = True
 
-    retriever = Retriever.from_config(args.index_dir)
+    reranker = None
+    if args.rerank:
+        from .reranker import make_reranker  # heavy import (torch); only pay for it when asked
+
+        reranker = make_reranker(args.reranker_model)
+
+    retriever = Retriever.from_config(args.index_dir, reranker=reranker)
+    mode = "hybrid" if args.rerank else args.mode
+    candidates = 20 if args.rerank else DEFAULT_CANDIDATES
     result = retriever.retrieve(
-        args.question, args.top_k, args.mode, filters or None, min_vector_score=args.min_vector_score
+        args.question, args.top_k, mode, filters or None,
+        candidates=candidates, min_vector_score=args.min_vector_score,
     )
 
     if args.json:
@@ -415,11 +444,9 @@ def main() -> None:
     for c in result.chunks:
         extra = f"vec={c.vector_score:.3f}" if c.vector_score is not None else "vec=-"
         extra += f" bm25={c.bm25_score:.2f}" if c.bm25_score is not None else " bm25=-"
+        if c.rerank_score is not None:
+            extra += f" rerank={c.rerank_score:.3f}"
         print(f"{c.rank}. [{c.score:.4f}] {c.title} > {c.section_path}   ({extra})\n   {c.chunk_id}")
     print(f"\n{json.dumps(result.timings_ms)}")
     if args.context:
         print("\n" + format_context(result.chunks))
-
-
-if __name__ == "__main__":
-    main()
