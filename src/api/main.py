@@ -161,10 +161,15 @@ class EventLog:
         return rows
 
     def _append(self, path: Path, rows: list[dict], record: dict) -> None:
+        line = json.dumps(record, ensure_ascii=False)
         with self._lock:
             with path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.write(line + "\n")
             rows.append(record)
+        # Also to stdout: on hosts without a persistent disk (Render's free
+        # plan) the JSONL files vanish on restart, but the platform keeps
+        # stdout. `grep '"event": ' ` on the downloaded logs rebuilds them.
+        print(json.dumps({"event": path.stem, **record}, ensure_ascii=False), flush=True)
 
     def log_request(self, record: dict) -> None:
         self._append(self.requests_path, self.requests, record)
@@ -249,7 +254,13 @@ def _load_real_librarian() -> Any:
     from .openai_generator import OpenAIGenerator
 
     reranker = None
-    if rerank:
+    if rerank and os.environ.get("RERANKER_BACKEND", "torch").lower() == "onnx":
+        # Lite image (Render): same model on onnxruntime, no torch. Parity on
+        # dev: identical top-5 on 30/30 questions (eval/results/reranker_parity_dev.md).
+        from ..retrieval.reranker_onnx import OnnxCrossEncoderReranker
+
+        reranker = OnnxCrossEncoderReranker()
+    elif rerank:
         from ..retrieval.reranker import make_reranker
 
         reranker = make_reranker()

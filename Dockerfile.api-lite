@@ -1,0 +1,55 @@
+# Lite API image for hosts with small instances and no persistent disk
+# (Render, docs/deploy-render.md). Differences from the main Dockerfile:
+#   - no torch: the reranker is the same MiniLM model on onnxruntime
+#     (RERANKER_BACKEND=onnx; identical top-5 on 30/30 dev questions,
+#     eval/results/reranker_parity_dev.md);
+#   - no Qdrant inside: vectors live in a hosted Qdrant (QDRANT_URL +
+#     QDRANT_API_KEY), uploaded once from a full build;
+#   - the local half of the index (chunks + BM25) is built HERE, at image
+#     build time, from the pinned corpus: no API call, byte-identical to the
+#     chunks whose vectors were uploaded (src/indexing/build_local.py).
+# No secrets at build time; keys come from the host's environment at run time.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HOME=/opt/hf \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken
+
+# git: fetch_corpus.sh clones the pinned corpus, and the loader reads its history.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-api-lite.txt .
+RUN pip install -r requirements-api-lite.txt
+
+COPY . .
+# EMBEDDING_MODEL only picks the tokenizer for chunk sizes here; it must be
+# the model the uploaded vectors were made with.
+ARG EMBEDDING_MODEL=text-embedding-3-small
+RUN sed -i 's/\r$//' scripts/*.sh \
+ && bash scripts/fetch_corpus.sh \
+ && EMBEDDING_MODEL=${EMBEDDING_MODEL} python -m src.indexing.build_local \
+ && python -c "from src.retrieval.reranker_onnx import download_model; download_model()" \
+ && python -c "import tiktoken; tiktoken.encoding_for_model('${EMBEDDING_MODEL}')" \
+ && rm -rf corpus \
+ && useradd --create-home --uid 1000 app \
+ && mkdir -p data/logs data/cache \
+ && chown -R app:app data
+
+# RERANKER_THREADS=1: on a fractional-CPU instance (0.5 CPU, simulated with
+# docker --cpus 0.5) one thread halved rerank time vs onnxruntime's default
+# (~9 s vs ~18 s per question).
+ENV HF_HUB_OFFLINE=1 \
+    RERANKER_BACKEND=onnx \
+    RERANKER_THREADS=1 \
+    GENERATOR=openai
+
+USER app
+EXPOSE 8000
+# Render (and most PaaS) pass the port to listen on in $PORT.
+CMD ["sh", "-c", "uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

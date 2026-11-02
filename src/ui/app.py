@@ -25,7 +25,10 @@ import httpx
 import streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
-ASK_TIMEOUT_S = 120  # first request can include reranker warm-up + Gemini retries
+# First request can include reranker warm-up + upstream retries. On a sleeping
+# free-tier host (render.yaml) a cold start plus a slow CPU rerank can exceed
+# 2 minutes, so it's configurable there.
+ASK_TIMEOUT_S = float(os.environ.get("ASK_TIMEOUT_S") or 120)
 MAX_QUESTION_CHARS = 1000  # same limits as the API (src/api/app.py)
 MAX_COMMENT_CHARS = 1000
 MAX_TURNS = 20

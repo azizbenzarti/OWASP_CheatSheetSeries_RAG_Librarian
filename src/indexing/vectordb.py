@@ -42,7 +42,9 @@ def get_client() -> QdrantClient:
     # Default timeout is a few seconds, too short for a bulk-upsert request
     # carrying hundreds of 1536-dim vectors; we also batch (UPSERT_BATCH_SIZE)
     # to keep any single request reasonably sized in the first place.
-    return QdrantClient(url=url, timeout=60)
+    # QDRANT_API_KEY: only for a hosted cluster (Qdrant Cloud, docs/deploy-render.md);
+    # the local docker-compose Qdrant has no auth and leaves it unset.
+    return QdrantClient(url=url, api_key=os.environ.get("QDRANT_API_KEY") or None, timeout=60)
 
 
 def collection_name(strategy: str, max_tokens: int, overlap: int) -> str:

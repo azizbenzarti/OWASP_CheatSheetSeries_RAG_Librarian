@@ -1,0 +1,38 @@
+# Render Blueprint: the lite deployment (docs/deploy-render.md).
+#   owasp-librarian-api  Dockerfile.api-lite: FastAPI + ONNX reranker, no torch
+#   owasp-librarian-ui   Dockerfile.ui: Streamlit, calls the API over HTTPS
+# Vectors live in Qdrant Cloud (free cluster), uploaded once from a full
+# local build. Secrets are entered in the Render dashboard (sync: false),
+# never stored here.
+#
+# Free plan: 512 MB RAM, a fraction of a CPU, no persistent disk, sleeps
+# after 15 idle minutes. Measured in a local simulation (docker --cpus 0.1,
+# --memory 512m): ~300-350 MB peak RAM, 50-100 s per question (the CPU
+# reranker dominates). Switch `plan` to starter for ~10-12 s per question.
+services:
+  - type: web
+    name: owasp-librarian-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api-lite
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: EMBEDDING_API_KEY      # OpenAI key (embeddings + answers)
+        sync: false
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: QDRANT_URL             # https://<cluster-id>.<region>.cloud.qdrant.io:6333
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+
+  - type: web
+    name: owasp-librarian-ui
+    runtime: docker
+    dockerfilePath: ./Dockerfile.ui
+    plan: free
+    envVars:
+      - key: API_URL                # the API's public URL, e.g. https://owasp-librarian-api.onrender.com
+        sync: false
+      - key: ASK_TIMEOUT_S          # cold start + slow free-tier CPU can exceed the default 120 s
+        value: "300"
