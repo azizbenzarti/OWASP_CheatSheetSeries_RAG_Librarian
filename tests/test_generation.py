@@ -7,7 +7,9 @@ import os
 import unittest
 from unittest import mock
 
-from src.generation import IDK_ANSWER, answer_question, build_answer, check_citations, parse_model_output
+from src.generation import (
+    IDK_ANSWER, answer_question, build_answer, check_citations, declines_in_text, parse_model_output,
+)
 from src.generation.gemini import DEFAULT_GEMINI_MODEL, GeminiConfig, GeminiGenerator
 from src.generation.prompt import RESPONSE_SCHEMA, SYSTEM_PROMPT, build_user_prompt
 from tests.test_retriever import VEC, make_retriever
@@ -42,6 +44,25 @@ class ParseOutput(unittest.TestCase):
     def test_invalid(self):
         for raw in (None, "", "not json", "[1, 2]", '{"answer": "x"}', '{"answerable": "yes", "answer": "x"}'):
             self.assertIsNone(parse_model_output(raw), raw)
+
+
+class DeclinesInText(unittest.TestCase):
+    def test_prose_refusals(self):
+        for t in ("The provided sources do not mention pastejacking [1].",
+                  "The sources don't specify a TTL. They discuss sessions [2].",
+                  "Sources cannot answer this.", "The OWASP cheat sheets do not cover BGP hijacking [3]."):
+            self.assertTrue(declines_in_text(t), t)
+
+    def test_real_answers(self):
+        for t in ("The sources emphasize setting limits and note that a per-message limit does not bound the stream [1].",
+                  "Use Argon2id [1]. The sources do not give a memory cost for scrypt [2].",  # partial: later sentence
+                  "Session cookies must set SameSite=Strict [1].", "Documents must not be parsed with DTDs enabled [2]."):
+            self.assertFalse(declines_in_text(t), t)
+
+    def test_build_answer_refuses(self):
+        from tests.test_retriever import make_chunks  # noqa: F401  (chunks only needed for sources)
+        result = build_answer("q", reply(True, "The provided sources do not cover this [1]."), retriever().retrieve("q").chunks)
+        self.assertEqual((result.answerable, result.refusal_reason, result.answer), (False, "declined_in_text", IDK_ANSWER))
 
 
 class Citations(unittest.TestCase):

@@ -267,6 +267,10 @@ def summarize(results: list[dict], model: str | None) -> dict:
         cost = sum(per) / len(per)
     return {
         "n": len(results), "n_answerable": len(ans_rows), "n_unanswerable": len(unans_rows),
+        # One number over every question: correctness score on answerable ones,
+        # 1/0 for refusing / not refusing on unanswerable ones. The Week 8 "lose
+        # at most 2 points" rule is checked on this (docs/optimisation.md).
+        "overall_accuracy": mean([SCORE[r["correctness"]] for r in ans_rows] + [float(not r["answerable"]) for r in unans_rows]),
         "correctness": mean([SCORE[r["correctness"]] for r in ans_rows]),
         "strict_correct": mean([float(r["correctness"] == "correct") for r in ans_rows]),
         "faithfulness_claims": round(sum(r["n_supported"] for r in answered) / claims, 4) if claims else None,
@@ -310,6 +314,7 @@ def write_outputs(
         f"question is ~{100 / max(1, s['n_answerable']):.1f} points; one unanswerable is "
         f"{100 / max(1, s['n_unanswerable']):.0f} points of the refusal rate.", "",
         "| metric | value | what it means |", "|---|---|---|",
+        f"| **overall accuracy** | {fmt(s['overall_accuracy'])} | all questions: correctness on answerable, refused-or-not on unanswerable |",
         f"| correctness | {fmt(s['correctness'])} | judge vs reference, correct=1 / partial=0.5 / incorrect or refused=0, over answerable |",
         f"| strict correct | {fmt(s['strict_correct'])} | share graded fully `correct` |",
         f"| faithfulness (claims) | {fmt(s['faithfulness_claims'])} | claims supported by any given source |",

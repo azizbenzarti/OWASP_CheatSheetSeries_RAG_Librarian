@@ -25,6 +25,8 @@ from ..generation.prompt import RESPONSE_SCHEMA
 DEFAULT_OPENAI_GENERATION_MODEL = "gpt-4o-mini"
 
 
+
+
 class OpenAIGenerator:
     def __init__(self, client: Any = None) -> None:
         load_dotenv()

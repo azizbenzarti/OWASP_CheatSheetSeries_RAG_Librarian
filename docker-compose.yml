@@ -1,9 +1,13 @@
 services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
+    # Bound to 127.0.0.1: reachable from this machine (local scripts, eval)
+    # but never from the network -- Qdrant has no auth, anyone reaching it
+    # could read or delete the index. The api container uses the internal
+    # network (http://qdrant:6333) and doesn't need these at all.
     ports:
-      - "6333:6333" # HTTP / REST API
-      - "6334:6334" # gRPC
+      - "127.0.0.1:6333:6333" # HTTP / REST API
+      - "127.0.0.1:6334:6334" # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
     ulimits:
@@ -25,8 +29,10 @@ services:
       ENSURE_INDEX: "1"
     depends_on:
       - qdrant
+    # Localhost only: /ask spends the OpenAI key, so on a server the public
+    # entry point is the UI alone. The ui container calls http://api:8000.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - index_data:/app/data/index
       - embedding_cache:/app/data/cache

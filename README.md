@@ -27,7 +27,7 @@ docker compose up --build
 
 Then open the UI at <http://localhost:8501> (API at <http://localhost:8000>, interactive docs at `/docs`). On the very first start the `api` container fetches the pinned corpus and builds the index (`heading` / 512 / overlap 0 / min 20) into Docker volumes, which takes a few minutes and about $0.02 of embeddings. Later starts reuse it. Keys are read from `.env` at run time (`env_file`); they are never copied into the image.
 
-Endpoints (`POST /ask`, `POST /feedback`, `GET /stats`, `GET /health`) are described in [HTTP API](#http-api) below, and the three-pane UI in [UI](#ui).
+Endpoints (`POST /ask`, `POST /feedback`, `GET /stats`, `GET /health`) are described in [HTTP API](#http-api) below, and the three-pane UI in [UI](#ui). Only the UI port (8501) is published to the network; Qdrant and the API listen on `127.0.0.1` only. **Deploying to a server:** see [`docs/deploy.md`](docs/deploy.md).
 
 Qdrant, OpenAI or Gemini failures return a plain `502` without internal details. Every request and feedback is appended to `data/logs/requests.jsonl` / `feedback.jsonl` (bind-mounted, gitignored), and `/stats` is computed from those files. Code: `src/api/main.py`, `src/ui/app.py`, `Dockerfile`, `scripts/docker-entrypoint.sh`. Offline tests (no keys): `python -m unittest tests.test_api tests.test_ui -v`.
 
@@ -129,7 +129,7 @@ result.refusal_reason         # why: no_results / model_declined / no_valid_cita
 result.citations              # Source(number, title, section_path, source_file, source_url, chunk_id) per cited [n]
 ```
 
-"I don't know" happens at four points, each recorded in `result.refusal_reason`:
+"I don't know" happens at five points, each recorded in `result.refusal_reason`:
 
 | reason | when | Gemini called? |
 |---|---|---|
@@ -137,6 +137,7 @@ result.citations              # Source(number, title, section_path, source_file,
 | `model_declined` | Gemini says the sources don't answer the question (the primary mechanism, per `docs/design.md`'s "I don't know" threshold section) | yes |
 | `no_valid_citations` | Gemini answered but cited no real source (citations to numbers it wasn't given are stripped; an answer left with none can't be checked, so it is refused) | yes |
 | `invalid_model_output` | output blocked, empty, or not the requested JSON | yes |
+| `declined_in_text` | the model says answerable but its answer opens with "the sources do not …" (a refusal in prose; added in Week 8, see `docs/optimisation.md`) | yes |
 
 Files: `src/generation/prompt.py` (system prompt + JSON schema), `gemini.py` (client, retries on 429/5xx), `answer.py` (citation check, refusal rules, `answer_question()`, `Librarian`, `ask()`, CLI), `tests/test_generation.py`.
 
@@ -190,7 +191,9 @@ Troubleshooting: `GEMINI_API_KEY is not set` -> step 2. Gemini `404` -> `GEMINI_
 |---|---|---|---|---|---|---|---|
 | 0.94 | 0.99 | 1.00 | 0.85 | 3/4 | 0/26 | 4.4 s / 8.8 s | $0.00034 |
 
-The one miss on unanswerable questions (q119, federated fine-tuning) was answered by stitching together nearby AI-security chunks. Test-set numbers and the Week 8 variants are in `eval/results/generation_test_*.md` and `generation_dev_*.md`.
+The one miss on unanswerable questions (q119, federated fine-tuning) was answered by stitching together nearby AI-security chunks. Test set (76 answerable + 13 unanswerable), same pipeline: correctness 0.87, faithfulness 0.99, citation accuracy 1.00, "I don't know" on 11/13 unanswerable, 2/76 false refusals, p50/p95 3.7 s / 5.6 s, $0.000325 per request.
+
+**Week 8** ([`docs/optimisation.md`](docs/optimisation.md)): the target (-50% cost or p95 latency, at most 2 points of accuracy lost) was **not met**. `gpt-5-nano` cuts cost by 55% but lost 2.2-3.9 points of overall accuracy on test, mostly by answering questions the corpus doesn't cover, so production stays on `gpt-4o-mini`. Halving p95 isn't reachable: the generation and embedding API calls alone exceed half the budget. Every experiment, with before/after numbers, and the cost model (today and at 100x) are in the report. What went wrong overall: [`docs/postmortem.md`](docs/postmortem.md).
 
 ## HTTP API
 

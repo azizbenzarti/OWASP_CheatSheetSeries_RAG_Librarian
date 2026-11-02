@@ -14,7 +14,11 @@ re-chunks or re-embeds anything.
   3. Gemini answers but cites no valid source (no_valid_citations): an
      uncited answer can't be checked against the corpus, so it isn't shown;
   4. Gemini's output is blocked, empty or not the JSON we asked for
-     (invalid_model_output).
+     (invalid_model_output);
+  5. the model says answerable=true but its answer opens by saying the
+     sources don't cover the question (declined_in_text) -- a refusal in
+     prose. Added in Week 8: gpt-5-nano does this often, gpt-4o-mini never
+     did on our eval runs (docs/optimisation.md).
 Per docs/design.md, the model's judgment (2) is the primary mechanism; no
 retrieval-score threshold is on by default because none separated
 answerable from unanswerable cleanly on dev.
@@ -49,6 +53,16 @@ RERANK_CANDIDATES = 20  # same "rerank hybrid's top 20" as the retriever CLI and
 # "[1]", "[2, 3]", "[2,3]". Not "[a]" or markdown links ("[text](url)" has no digits-only brackets).
 _CITATION_RE = re.compile(r"([ \t]*)\[(\d+(?:\s*,\s*\d+)*)\]")
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+# First sentence = "The (provided) sources ... do not / cannot ...", with the
+# negation within two words of the subject, so "The sources emphasize X and
+# note that Y does not ..." (a real answer) does not match. Checked on 341
+# saved eval answers: 4 true refusals caught, 0 real answers hit.
+_DECLINE_RE = re.compile(
+    r"^\s*(?:the\s+)?(?:provided\s+|given\s+|available\s+|retrieved\s+|owasp\s+)?"
+    r"(?:sources?|corpus|cheat\s*sheets?|materials?|excerpts?|documents?)\s+(?:\w+\s+){0,2}?"
+    r"(?:do(?:es)?\s+not|don't|doesn't|cannot|can't)\b",
+    re.IGNORECASE,
+)
 
 
 # --------------------------------------------------------------------- #
@@ -127,6 +141,13 @@ def parse_model_output(raw: str | None) -> tuple[bool, str] | None:
     return answerable, answer.strip()
 
 
+def declines_in_text(answer: str) -> bool:
+    """True if the answer's first sentence says the sources don't cover the
+    question, i.e. a refusal written as prose under answerable=true."""
+    first = re.split(r"(?<=[.!?])\s", answer.strip(), maxsplit=1)[0]
+    return bool(_DECLINE_RE.search(first))
+
+
 def check_citations(answer: str, n_sources: int) -> tuple[str, list[int], list[int]]:
     """Keep [n] citations that point at a real source (1..n_sources); drop
     the rest from the text. Returns (cleaned answer, valid numbers sorted,
@@ -152,7 +173,7 @@ def build_answer(
     chunks: Sequence[RetrievedChunk],
     model: str | None = None,
 ) -> Answer:
-    """Turn the model's raw output into an Answer, applying refusal rules 2-4
+    """Turn the model's raw output into an Answer, applying refusal rules 2-5
     from the module docstring."""
     sources = [Source.from_chunk(i, c) for i, c in enumerate(chunks, start=1)]
 
@@ -165,6 +186,8 @@ def build_answer(
     answerable, text = parsed
     if not answerable or not text:
         return refuse("model_declined")
+    if declines_in_text(text):
+        return refuse("declined_in_text")
 
     cleaned, valid, invalid = check_citations(text, len(sources))
     if not valid:

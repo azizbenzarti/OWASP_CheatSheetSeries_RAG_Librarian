@@ -128,6 +128,13 @@ should have a monthly budget cap.
   checks:") as an unsupported claim (q047), so faithfulness is slightly
   pessimistic. We did not measure judge agreement with humans.
 
+- **Week 8 showed the cost of this directly.** `gpt-5-nano` refused 4/4
+  unanswerable dev questions and looked better than the baseline; on test
+  it refused only 7/13. Its correctness also moved 4.6 points between two
+  runs of the same model, more than the 2-point budget itself. A model
+  swap judged on 4 unanswerable questions, or on one run, would have
+  shipped a regression. See `docs/optimisation.md`.
+
 **Lesson.** Write more unanswerable questions, and spot-check the judge
 against a human on a sample before trusting small differences.
 
